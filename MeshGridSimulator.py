@@ -81,7 +81,7 @@ def solve(req_I):
         I_needed   = remaining_P / v_up if v_up else 0.0
 
         # requested & limited current
-        I_target = min(req_I[i], I_MAX)
+        I_target = req_I[i]  # allow > I_MAX; sag handled inside inv_terminal
         I_supplied = min(I_target, I_needed)
 
         # voltage sag if I_target > I_MAX (already limited) handled implicitly
@@ -128,7 +128,7 @@ for i in range(N):
         place_P_out.append(st.empty())
 
 if changed:
-    state.req_I = [min(ld/V_NOM, I_MAX) for ld in state.load_W]
+    state.req_I = [ld / V_NOM for ld in state.load_W]
 
 # ───────── Step button ─────────
 if st.button("⏭ Step"):
@@ -178,3 +178,4 @@ st.pyplot(fig)
 
 if any(v < WARN_V for v in V_node):
     st.warning("Some nodes below 225 V — tap ⏭ Step until recovered.")
+
