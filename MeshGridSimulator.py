@@ -103,3 +103,4 @@ if frequency_shift > 0:
     st.warning("System is overloaded — frequency drop may cause instability!")
 if any(ld["Voltage (V)"] < V_NOMINAL for ld in load_data):
     st.warning("One or more inverters are voltage sagging to meet power limits!")
+
