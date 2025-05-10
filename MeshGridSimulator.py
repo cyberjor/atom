@@ -26,6 +26,9 @@ I_MAX_CONTINUOUS = 8.0
 I_MAX_INPUT = 15.0
 V_MIN = 100
 V_WARNING = 225
+RESISTANCE_PER_KM = 1.0  # ohms/km
+DISTANCE_BETWEEN_INVERTERS_M = 300
+R_LINE = (DISTANCE_BETWEEN_INVERTERS_M / 1000.0) * RESISTANCE_PER_KM
 
 # Voltage sag function
 def calculate_voltage_from_power(power):
@@ -91,24 +94,24 @@ st.metric("Grid Frequency (Hz)", f"{F_NOMINAL - frequency_shift:.2f}")
 
 # Visualize mesh grid
 st.subheader("Mesh Grid Visualization")
-fig, ax = plt.subplots(figsize=(12, 2.5))  # Adjusted to make poles ~2 inches on screen
+fig, ax = plt.subplots(figsize=(12, 2.5))
 
 for i, ld in enumerate(load_data):
     x = i * 2
-    # Draw power pole (scaled to screen height)
     ax.plot([x, x], [0, 0.3], color='black', lw=2)
     ax.plot([x-0.05, x+0.05], [0.3, 0.33], color='black', lw=2)
     ax.text(x, 0.35, f"Inv {i+1}", ha='center', fontsize=9, weight='bold')
-    # Draw load bar (scaled)
     ax.bar(x, ld["Power (W)"] / 10000, width=0.3, color='steelblue', bottom=0.4)
-    # Leader label below pole
     if i == leader_index:
         ax.text(x, -0.05, "Leader", ha='center', va='top', fontsize=8, weight='bold', color='gold')
 
-# Draw lines between inverters
+# Draw lines and voltage drops between inverters
 for i in range(num_inverters - 1):
     x0, x1 = i * 2, (i + 1) * 2
+    current_flow = abs(load_data[i+1]["Current (A)"] - load_data[i]["Current (A)"])
+    voltage_drop = current_flow * R_LINE
     ax.plot([x0, x1], [0.33, 0.33], color='gray', linestyle='--')
+    ax.text((x0 + x1)/2, 0.36, f"{voltage_drop:.2f} V", ha='center', fontsize=8, color='red')
 
 ax.set_xlim(-1, 2 * num_inverters)
 ax.set_ylim(-0.1, 0.7)
