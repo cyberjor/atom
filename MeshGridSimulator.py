@@ -56,23 +56,61 @@ def inv_terminal(I_req: float, v_up: float):
 
 
 def solve(req_I):
-    leader_I = req_I[leader_idx]
-    leader_v = V_NOM if leader_I<=I_MAX else max(CAP_W/leader_I, MIN_V)
+    """Sequential power‑flow solve.
 
-    I_out, P_out, V_node, drop = [], [], [], []
+    For each node from leader → right:
+    1. Incoming surplus_P (W) arrives from the left.
+    2. Remaining load to cover = max(load_i – surplus_P, 0).
+    3. Inverter supplies I_sup = min(I_req, remaining_load / V_up, I_MAX).
+       • If I_req > I_MAX, voltage droops so power ≤ 2 kW.
+    4. Update surplus_P = surplus_P + P_supplied – load_i.
+    5. Compute line drop to next node using that surplus_P.
+    """
+    leader_I = req_I[leader_idx]
+    leader_v = V_NOM if leader_I <= I_MAX else max(CAP_W / leader_I, MIN_V)
+
+    I_sup, P_sup, V_node, drop_seg = [], [], [], []
     cum_drop = 0.0
-    surplus_P = 0.0
+    surplus_P = 0.0  # power flowing rightward (W)
+
     for i in range(N):
         v_up = leader_v - cum_drop
-        I_i, P_i, v_i = inv_terminal(req_I[i], v_up)
-        I_out.append(I_i); P_out.append(P_i); V_node.append(v_i)
-        surplus_P += P_i - state.load_W[i]
-        if i < N-1:
-            line_I = surplus_P / v_i if v_i else 0.0
+
+        # incoming power meets part of the load
+        remaining_P = max(state.load_W[i] - surplus_P, 0.0)
+        I_needed   = remaining_P / v_up if v_up else 0.0
+
+        # requested & limited current
+        I_target = min(req_I[i], I_MAX)
+        I_supplied = min(I_target, I_needed)
+
+        # voltage sag if I_target > I_MAX (already limited) handled implicitly
+        # If inverter asked for >I_MAX, it's already capped.
+        # Compute terminal voltage for sag IF current demand > I_MAX
+        if I_target > I_MAX:
+            v_term = max(CAP_W / I_target, MIN_V)
+            v_term = min(v_term, v_up)
+        else:
+            v_term = v_up
+
+        P_out_i = I_supplied * v_term
+
+        # record metrics
+        I_sup.append(I_supplied)
+        P_sup.append(P_out_i)
+        V_node.append(v_term)
+
+        # update surplus (positive → power available to right)
+        surplus_P += P_out_i - state.load_W[i]
+
+        # line drop to next node
+        if i < N - 1:
+            line_I = surplus_P / v_term if v_term else 0.0
             v_d = abs(line_I) * R_LINE
-            drop.append(v_d)
+            drop_seg.append(v_d)
             cum_drop += v_d
-    return leader_v, I_out, P_out, V_node, drop
+
+    return leader_v, I_sup, P_sup, V_node, drop_seg
 
 # ───────── Sidebar sliders ─────────
 SIDE.subheader("Loads & Currents")
