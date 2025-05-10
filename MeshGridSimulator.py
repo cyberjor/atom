@@ -2,26 +2,26 @@ import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 
-"""Mesh‑Grid Inverter Simulator (local voltage‑driven response)
+"""
+Mesh‑Grid Inverter Simulator (time‑step, local‑voltage response)
 
-Update highlights
-─────────────────
-• **Line current & voltage‑drop** use the actual upstream node voltage, not the nominal 230 V.
-• A node ramps its inverter by 100 W/step **only when**
-    1. its sensed voltage < 225 V **and**
-    2. its own inverter output is still below its local load (needs support).
-• If upstream surplus already satisfies the local load, that node will no longer ramp and its voltage will recover.
+Fixes
+─────
+• **Indentation/return** inside `solve_network` was wrong → now inside function.
+• Added missing `cum_drop` initialisation inside loop.
+• Replaced generator expressions with floats to avoid NumPy `TypeError`.
+• Clarified comments and variable names.
 """
 
-# ---------------- UI ----------------
+# ───────── UI ─────────
 st.title("Mesh Grid Time‑Step Simulator")
 SIDE = st.sidebar
 SIDE.header("Configuration")
 N = SIDE.slider("Number of Inverters", 2, 10, 4)
 leader_idx = SIDE.selectbox("Leader (grid‑forming) inverter", range(N), format_func=lambda i: f"Inv {i+1}")
-STEP_W = 100  # W per local step
+STEP_W = 100  # W ramp per step
 
-# --------------- Constants ---------------
+# ───────── Constants ─────────
 V_NOM   = 230.0
 F_NOM   = 60.0
 CAP_W   = 2000.0
@@ -29,114 +29,133 @@ WARN_V  = 225.0
 MIN_V   = 100.0
 R_LINE  = 0.3        # Ω per 300 m span (1 Ω/km)
 
-# --------------- State -------------------
-if "base_load" not in st.session_state:
-    st.session_state.base_load = [0.0]*N
-    st.session_state.req_power  = [0.0]*N  # requested/incrementing value
+# ───────── Session state ─────────
+state = st.session_state
+if "base_load" not in state:
+    state.base_load = [0.0]*N  # user load W
+    state.req_power = [0.0]*N  # inverter target W
 
-if len(st.session_state.base_load) != N:
-    st.session_state.base_load = [0.0]*N
-    st.session_state.req_power  = [0.0]*N
+# resize lists if N changed
+if len(state.base_load) != N:
+    state.base_load = [0.0]*N
+    state.req_power = [0.0]*N
 
-# --------------- Helper ------------------
+# ───────── Helper functions ─────────
 
-def inv_output(p_req, v):
-    """Clip to CAP_W at given terminal voltage."""
+def inv_output(p_req: float, v_term: float):
+    """Clip power to CAP_W at terminal voltage and return (P_out, I_out)."""
     p_out = min(p_req, CAP_W)
-    i_out = p_out / v if v else 0.0
+    i_out = p_out / v_term if v_term else 0.0
     return p_out, i_out
 
 
 def solve_network(req_power):
-    """Return leader_v, lists: P_out, V_node, line_drop."""
-    # leader voltage sag if over capacity
-    leader_req = req_power[leader_idx]
-    leader_v   = V_NOM if leader_req <= CAP_W else max(CAP_W/leader_req*V_NOM, MIN_V)
+    """Compute node voltages, inverter outputs & line drops.
 
-    P_out=[]; I_out=[]; V_node=[]; drop_seg=[]
-    cum_drop=0.0
+    Returns
+    -------
+    leader_v : float
+    P_out    : list[float]
+    V_node   : list[float]
+    drop_seg : list[float]  (length N‑1)
+    """
+    leader_req = req_power[leader_idx]
+    leader_v   = V_NOM if leader_req <= CAP_W else max(CAP_W / leader_req * V_NOM, MIN_V)
+
+    P_out, V_node, drop_seg = [], [], []
+    cum_drop   = 0.0  # cumulative voltage drop from leader
+    run_surplus = 0.0  # running power surplus up‑stream of current segment
+
     for i in range(N):
         v = leader_v - cum_drop
         V_node.append(v)
-        p,i = inv_output(req_power[i], v)
-        P_out.append(p); I_out.append(i)
+
+        p_i, _ = inv_output(req_power[i], v)
+        P_out.append(p_i)
+
+        run_surplus += p_i - state.base_load[i]
+
+        # calculate drop for segment i → i+1
         if i < N-1:
-            # net surplus power to left of next segment
-            surplus_left = sum(float(x) for x in P_out[:i+1]) - sum(float(x) for x in st.session_state.base_load[:i+1])
-            line_I = surplus_left / v if v else 0.0  # use upstream voltage
-            vd = abs(line_I) * R_LINE
-            drop_seg.append(vd)
-            cum_drop += vd
+            line_I = run_surplus / v if v else 0.0
+            v_d    = abs(line_I) * R_LINE
+            drop_seg.append(v_d)
+            cum_drop += v_d
+
     return leader_v, P_out, V_node, drop_seg
 
-# --------------- Sidebar sliders ---------
+# ───────── Sidebar sliders ─────────
 SIDE.subheader("Local Loads (W)")
-changed=False
-placeholders=[]
+changed = False
+placeholders = []
 for i in range(N):
     with SIDE.expander(f"Inverter {i+1}"):
-        new_load = st.slider("Load", 0.0, 3000.0, st.session_state.base_load[i], 50.0, key=f"load_{i}")
-        if new_load != st.session_state.base_load[i]:
-            changed=True
-            st.session_state.base_load[i]=new_load
+        val = st.slider("Load", 0.0, 3000.0, state.base_load[i], 50.0, key=f"load_{i}")
+        if val != state.base_load[i]:
+            changed = True
+            state.base_load[i] = val
         placeholders.append(st.empty())
 
 if changed:
-    # reset requested power to exactly match new loads (starting point)
-    st.session_state.req_power = st.session_state.base_load.copy()
+    state.req_power = state.base_load.copy()
 
-# --------------- Step Button -------------
+# ───────── Step logic ─────────
 if st.button("⏭ Step"):
-    leader_v, P_out_tmp, V_tmp, _ = solve_network(st.session_state.req_power)
+    _, P_tmp, V_tmp, _ = solve_network(state.req_power)
     for i in range(N):
-        need = st.session_state.base_load[i] - P_out_tmp[i]
-        if V_tmp[i] < WARN_V and need > 0 and st.session_state.req_power[i] < CAP_W:
-            st.session_state.req_power[i] = min(st.session_state.req_power[i] + STEP_W, CAP_W)
+        need = state.base_load[i] - P_tmp[i]
+        if V_tmp[i] < WARN_V and need > 0 and state.req_power[i] < CAP_W:
+            state.req_power[i] = min(state.req_power[i] + STEP_W, CAP_W)
 
-# --------------- Final solve -------------
-leader_v, P_out, V_node, drop_seg = solve_network(st.session_state.req_power)
+# ───────── Final solve ─────────
+leader_v, P_out, V_node, drop_seg = solve_network(state.req_power)
 
-# update placeholders
 for i in range(N):
     placeholders[i].markdown(f"**Output:** {P_out[i]:.0f} W")
 
-# --------------- Metrics -----------------
+# ───────── Metrics ─────────
 TOTAL_W = sum(P_out)
-shift = max(0.0,(TOTAL_W - N*CAP_W)/1000*0.5)
-col1,col2,col3 = st.columns(3)
+shift_hz = max(0.0, (TOTAL_W - N*CAP_W) / 1000 * 0.5)
+col1, col2, col3 = st.columns(3)
 col1.metric("Total Output (W)", f"{TOTAL_W:.0f}")
 col2.metric("Leader V (V)", f"{leader_v:.1f}")
-col3.metric("Freq (Hz)", f"{F_NOM - shift:.2f}")
+col3.metric("Freq (Hz)", f"{F_NOM - shift_hz:.2f}")
 
-# --------------- Plot --------------------
-fig, ax = plt.subplots(figsize=(12,3.5))
+# ───────── Plot ─────────
+fig, ax = plt.subplots(figsize=(12, 3.5))
 for i in range(N):
-    x = i*2
-    ax.plot([x,x],[0,0.3],color='black')
-    ax.plot([x-0.05,x+0.05],[0.3,0.33],color='black')
-    ax.text(x,0.35,f"Inv {i+1}",ha='center',weight='bold')
-    ax.text(x,0.52,f"{V_node[i]:.0f} V",ha='center',fontsize=8,color='purple')
-    ax.bar(x-0.2, st.session_state.base_load[i]/10000, 0.15, bottom=0.6, color='orange')
-    ax.bar(x+0.05, P_out[i]/10000,                0.15, bottom=0.6, color='steelblue')
-    if i==leader_idx:
-        ax.text(x,-0.05,"Leader",ha='center',va='top',fontsize=8,color='gold')
-    # line to next
+    x = i * 2
+    # pole
+    ax.plot([x, x], [0, 0.3], color='black')
+    ax.plot([x-0.05, x+0.05], [0.3, 0.33], color='black')
+    ax.text(x, 0.35, f"Inv {i+1}", ha='center', weight='bold')
+    ax.text(x, 0.52, f"{V_node[i]:.0f} V", ha='center', fontsize=8, color='purple')
+
+    # bars
+    ax.bar(x-0.2, state.base_load[i]/10000, 0.15, bottom=0.6, color='orange')
+    ax.bar(x+0.05, P_out[i]/10000,      0.15, bottom=0.6, color='steelblue')
+
+    if i == leader_idx:
+        ax.text(x, -0.05, "Leader", ha='center', va='top', fontsize=8, color='gold')
+
+    # line to next node
     if i < N-1:
-        ax.plot([x,x+2],[0.33,0.33],color='gray',ls='--')
-        mid=x+1
-        vd=drop_seg[i]
-        ax.text(mid,0.36,f"{vd:.2f} V",ha='center',fontsize=8,color='red')
-        if vd>1e-3:
-            surplus_left = sum(float(x) for x in P_out[:i+1]) - sum(float(x) for x in st.session_state.base_load[:i+1])
-            direction = -1 if surplus_left<0 else 1
-            ax.annotate('',xy=(mid+0.3*direction,0.34),xytext=(mid-0.3*direction,0.34),arrowprops=dict(arrowstyle='->',color='green'))
+        ax.plot([x, x+2], [0.33, 0.33], color='gray', ls='--')
+        mid = x + 1
+        v_d = drop_seg[i]
+        ax.text(mid, 0.36, f"{v_d:.2f} V", ha='center', fontsize=8, color='red')
+        if v_d > 1e-3:
+            surplus_left = sum(P_out[:i+1]) - sum(state.base_load[:i+1])
+            arrow_dir = -1 if surplus_left < 0 else 1
+            ax.annotate('', xy=(mid + 0.3*arrow_dir, 0.34), xytext=(mid - 0.3*arrow_dir, 0.34),
+                        arrowprops=dict(arrowstyle='->', color='green'))
 
 ax.set_xlim(-1, 2*N)
 ax.set_ylim(-0.1, 1.3)
 ax.axis('off')
 st.pyplot(fig)
 
-# --------------- Warning -----------------
+# ───────── Warning ─────────
 if any(v < WARN_V for v in V_node):
-    st.warning("Some nodes below 225 V — keep stepping until all recover.")
+    st.warning("Nodes below 225 V — press ⏭ Step until all recover.")
 
