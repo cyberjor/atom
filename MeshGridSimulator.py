@@ -4,138 +4,135 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 
-# Title
+# -----------------------------
+# Mesh Grid Current & Power Simulator
+# -----------------------------
+
 st.title("Mesh Grid Current and Power Simulation")
 
-# Inverter settings
+# ----- Sidebar Controls -----
 st.sidebar.header("Inverter Power Settings")
+num_inverters = st.sidebar.slider("Number of Inverters", 2, 10, 4)
+leader_index = st.sidebar.selectbox(
+    "Select Grid‑Forming (Leader) Inverter",
+    options=range(num_inverters),
+    format_func=lambda x: f"Inverter {x+1}"
+)
 
-# Number of inverters
-num_inverters = st.sidebar.slider("Number of Inverters", min_value=2, max_value=10, value=4)
+# ----- Constants -----
+V_NOMINAL = 230          # V
+F_NOMINAL = 60.0         # Hz
+INVERTER_CAPACITY = 2000 # W (2 kW)
+V_MIN = 100              # V minimum sag
+V_WARNING = 225          # V warning threshold
+RESISTANCE_PER_KM = 1.0  # Ω/km
+DIST_M = 300             # m between poles
+R_LINE = (DIST_M / 1000) * RESISTANCE_PER_KM  # Ω
 
-# Leader inverter selection
-leader_index = st.sidebar.selectbox("Select Grid-Forming (Leader) Inverter", options=range(num_inverters), format_func=lambda x: f"Inverter {x+1}")
+# ----- Helper -----
 
-manual_powers = []
-
-# Constants
-V_NOMINAL = 230
-F_NOMINAL = 60.0
-INVERTER_CAPACITY = 2000
-I_MAX_CONTINUOUS = 8.0
-I_MAX_INPUT = 15.0
-V_MIN = 100
-V_WARNING = 225
-RESISTANCE_PER_KM = 1.0  # ohms/km
-DISTANCE_BETWEEN_INVERTERS_M = 300
-R_LINE = (DISTANCE_BETWEEN_INVERTERS_M / 1000.0) * RESISTANCE_PER_KM
-
-# Voltage sag function
-def calculate_voltage_from_power(power):
-    current = power / V_NOMINAL
+def inverter_model(power):
+    """Return (voltage, current, clipped_power) given desired power draw."""
+    current = power / V_NOMINAL if V_NOMINAL else 0
     if power <= INVERTER_CAPACITY:
         voltage = V_NOMINAL
+        clipped_power = power
     else:
-        voltage = max(INVERTER_CAPACITY / current, V_MIN)
-        power = voltage * current
-    return voltage, current, min(power, INVERTER_CAPACITY)
+        voltage = max(INVERTER_CAPACITY / current, V_MIN) if current else V_MIN
+        clipped_power = voltage * current
+    return voltage, current, clipped_power
 
-# Step 1: Collect manual power input
-output_placeholders = []  # placeholders to update after adjustment
+# ----- Collect User Loads -----
+manual_powers = []
+placeholders = []  # to update after adjustment
 for i in range(num_inverters):
     with st.sidebar.expander(f"Inverter {i+1} Settings"):
-        power = st.slider("Power Draw (W)", 0.0, 3000.0, 1000.0, step=50.0, key=f"power_{i}")
-        manual_powers.append(power)
-        voltage, current, _ = calculate_voltage_from_power(power)
-        if voltage < V_WARNING:
-            st.error(f"⚠️ Voltage sag detected: {voltage:.2f} V")
-        # placeholder for adjusted power output
-        placeholder = st.empty()
-        output_placeholders.append(placeholder)
+        p_draw = st.slider(
+            "Power Draw (W)", 0.0, 3000.0, 1000.0, 50.0, key=f"p_{i}")
+        manual_powers.append(p_draw)
+        v0, _, _ = inverter_model(p_draw)
+        if v0 < V_WARNING:
+            st.error(f"⚠️ Voltage sag detected: {v0:.2f} V")
+        placeholders.append(st.empty())
 
-# Step 2: Leader logic
+# ----- Assistance Logic (simple) -----
 leader_power = manual_powers[leader_index]
-leader_voltage, leader_current, actual_leader_power = calculate_voltage_from_power(leader_power)
+leader_v, leader_i, leader_actual = inverter_model(leader_power)
 
 adjusted_powers = manual_powers.copy()
-if leader_voltage < V_WARNING:
-    deficit_power = leader_power - INVERTER_CAPACITY
-    if deficit_power > 0:
-        assist_voltage = V_NOMINAL
-        remaining_deficit = deficit_power
-        for i in range(num_inverters):
-            if i == leader_index:
-                continue
-            available_margin = 3000.0 - adjusted_powers[i]
-            assist_power = min(remaining_deficit, available_margin)
-            adjusted_powers[i] += assist_power
-            remaining_deficit -= assist_power
-            if remaining_deficit <= 0:
-                break
+if leader_v < V_WARNING:
+    deficit = max(leader_power - INVERTER_CAPACITY, 0)
+    for i in range(num_inverters):
+        if i == leader_index or deficit <= 0:
+            continue
+        margin = 3000.0 - adjusted_powers[i]
+        share = min(deficit, margin)
+        adjusted_powers[i] += share
+        deficit -= share
 
-# Step 3: Calculate outputs
+# ----- Solve Inverter Outputs -----
 load_data = []
 for i in range(num_inverters):
-    power = adjusted_powers[i]
-    voltage, current, actual_power = calculate_voltage_from_power(power)
+    v, i_curr, p_out = inverter_model(adjusted_powers[i])
     load_data.append({
-        "Inverter": f"Inv {i+1}",
-        "Current (A)": current,
-        "Voltage (V)": voltage,
-        "Power (W)": actual_power,
-        "Local Load (W)": manual_powers[i]
+        "name": f"Inv {i+1}",
+        "V": v,
+        "I": i_curr,
+        "P_out": p_out,
+        "P_load": manual_powers[i]
     })
-    # update the placeholder with adjusted output
-    output_placeholders[i].markdown(f"**Inverter Power Output:** {actual_power:.2f} W")
+    placeholders[i].markdown(f"**Inverter Power Output:** {p_out:.2f} W")
 
-# Grid stats
-(figsize=(12, 3.5))
+# ----- Grid‑level Metrics -----
+total_power = sum(d["P_out"] for d in load_data)
+grid_voltage = load_data[leader_index]["V"]
+frequency_shift = max(0, (total_power - num_inverters*INVERTER_CAPACITY)/1000 * 0.5)
 
-for i, ld in enumerate(load_data):
-    x = i * 2
+st.subheader("Grid State")
+st.metric("Total Power (W)", f"{total_power:.0f}")
+st.metric("Grid Voltage (V)", f"{grid_voltage:.2f}")
+st.metric("Grid Frequency (Hz)", f"{F_NOMINAL - frequency_shift:.2f}")
+
+# ----- Visualisation -----
+st.subheader("Mesh Grid Visualization")
+fig, ax = plt.subplots(figsize=(12, 3.5))
+
+# Draw poles & bars
+for idx, d in enumerate(load_data):
+    x = idx * 2
     ax.plot([x, x], [0, 0.3], color='black', lw=2)
     ax.plot([x-0.05, x+0.05], [0.3, 0.33], color='black', lw=2)
-    ax.text(x, 0.35, f"Inv {i+1}", ha='center', fontsize=9, weight='bold')
-    ax.bar(x - 0.2, ld["Local Load (W)"] / 10000, width=0.15, color='orange', bottom=0.4)
-    ax.bar(x + 0.05, ld["Power (W)"] / 10000, width=0.15, color='steelblue', bottom=0.4)
-    if i == leader_index:
+    ax.text(x, 0.35, d["name"], ha='center', fontsize=9, weight='bold')
+    # Local load (orange) & inverter output (blue)
+    ax.bar(x-0.2, d["P_load"]/10000, 0.15, bottom=0.4, color='orange')
+    ax.bar(x+0.05, d["P_out"]/10000, 0.15, bottom=0.4, color='steelblue')
+    if idx == leader_index:
         ax.text(x, -0.05, "Leader", ha='center', va='top', fontsize=8, weight='bold', color='gold')
 
-# Draw lines and voltage drops with arrows
-for i in range(num_inverters - 1):
-    x0, x1 = i * 2, (i + 1) * 2
-    mid_x = (x0 + x1) / 2
+# Draw lines, voltage drop & arrows
+for i in range(num_inverters-1):
+    x0, x1 = i*2, (i+1)*2
+    mid_x = (x0+x1)/2
+    ax.plot([x0,x1],[0.33,0.33], color='gray', ls='--')
 
-    # Always plot the line between poles
-    ax.plot([x0, x1], [0.33, 0.33], color='gray', linestyle='--')
+    p0_net = load_data[i]["P_out"] - load_data[i]["P_load"]
+    p1_net = load_data[i+1]["P_out"] - load_data[i+1]["P_load"]
+    flow = p0_net - p1_net  # +ve: i→i+1
+    v_drop = abs(flow / V_NOMINAL) * R_LINE
+    ax.text(mid_x, 0.36, f"{v_drop:.2f} V", ha='center', fontsize=8, color='red')
 
-    # Net power surplus/deficit at each inverter
-    p0_net = load_data[i]["Power (W)"] - load_data[i]["Local Load (W)"]
-    p1_net = load_data[i+1]["Power (W)"] - load_data[i+1]["Local Load (W)"]
-    power_flow = p0_net - p1_net  # +ve means flow from i → i+1
+    if abs(flow) > 1:
+        direction = 1 if flow > 0 else -1
+        ax.annotate('', xy=(mid_x+0.3*direction,0.34), xytext=(mid_x-0.3*direction,0.34),
+                    arrowprops=dict(arrowstyle='->', color='green', lw=1.5))
 
-    # Voltage drop based on power flow (|I| * R)
-    voltage_drop = abs(power_flow / V_NOMINAL) * R_LINE
-    ax.text(mid_x, 0.36, f"{voltage_drop:.2f} V", ha='center', fontsize=8, color='red')
-
-    # Draw arrow only if significant power transfers (>1 W)
-    if abs(power_flow) > 1:
-        direction = 1 if power_flow > 0 else -1  # 1: i→i+1, -1: i+1→i
-        ax.annotate(
-            '',
-            xy=(mid_x + 0.3 * direction, 0.34),
-            xytext=(mid_x - 0.3 * direction, 0.34),
-            arrowprops=dict(arrowstyle='->', color='green', lw=1.5)
-        )
-
-ax.set_xlim(-1, 2 * num_inverters)
+ax.set_xlim(-1, 2*num_inverters)
 ax.set_ylim(-0.1, 1)
 ax.axis('off')
 st.pyplot(fig)
 
-# Warnings
+# ----- Warnings -----
 if frequency_shift > 0:
     st.warning("System is overloaded — frequency drop may cause instability!")
-if any(ld["Voltage (V)"] < V_NOMINAL for ld in load_data):
+if any(d["V"] < V_NOMINAL for d in load_data):
     st.warning("One or more inverters are voltage sagging to meet power limits!")
-
