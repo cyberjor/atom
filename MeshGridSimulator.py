@@ -49,13 +49,13 @@ for i in range(num_inverters):
 
 # Compute total system performance
 total_power = sum(ld["Power (W)"] for ld in load_data)
-voltage_avg = np.mean([ld["Voltage (V)"] for ld in load_data])
+grid_voltage = load_data[0]["Voltage (V)"] if load_data else V_NOMINAL
 frequency_shift = max(0, (total_power - num_inverters * INVERTER_CAPACITY) / 1000 * 0.5)  # 0.5 Hz per kW overload
 
 # Display results
 st.subheader("Grid State")
 st.metric("Total Power (W)", f"{total_power:.0f}")
-st.metric("Average Voltage (V)", f"{voltage_avg:.2f}")
+st.metric("Grid Voltage (V)", f"{grid_voltage:.2f}")
 st.metric("Grid Frequency (Hz)", f"{F_NOMINAL - frequency_shift:.2f}")
 
 # Dataframe and plots
