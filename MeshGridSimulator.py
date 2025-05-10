@@ -11,7 +11,6 @@ WARN_V = 225.0
 STEP_I = 0.5
 R_LINE = 0.3  # ohms per 300m
 
-# Init
 st.set_page_config(page_title="Mesh Grid Simulator", layout="wide")
 st.title("Mesh-Grid Current and Power Simulation")
 st.sidebar.header("Inverter & Load Settings")
@@ -24,7 +23,7 @@ if "load_W" not in st.session_state or len(st.session_state.load_W) != N:
     st.session_state.load_W = [0.0] * N
     st.session_state.I_local = [0.0] * N
 
-# Always-visible sidebar sliders
+# Show all inverter sliders and info without expanders
 for i in range(N):
     st.sidebar.subheader(f"Inverter {i+1}")
     st.session_state.load_W[i] = st.slider(
@@ -48,21 +47,17 @@ if st.button("⏭ Step"):
 
 # Solver
 def solve(load_W, I_local):
-    # Calculate net surplus before line drops
     surplus = [I_local[i] - load_W[i] / V_NOM for i in range(N)]
 
-    # Line currents based on surplus
     line_I = []
     cum = 0.0
     for seg in reversed(range(1, N)):
         cum += surplus[seg]
         line_I.insert(0, cum)
 
-    # Effective leader current (local current - imports)
     import_I = line_I[0] if line_I else 0.0
     eff_I0 = max(I_local[leader_idx] - import_I, 0.0)
 
-    # Start with 230V and apply droop after full line propagation
     V_nodes = [V_NOM] * N
     drop_seg = []
 
@@ -71,25 +66,31 @@ def solve(load_W, I_local):
         drop_seg.append(drop)
         V_nodes[i] = max(V_nodes[i-1] - drop, MIN_V)
 
-    # Apply voltage droop per inverter if it exceeds 2kW
+    # Apply droop and cap at 2kW
     for i in range(N):
         I = I_local[i]
         V = V_nodes[i]
         if I * V > CAP_W:
             V_nodes[i] = max(CAP_W / I, MIN_V)
 
-    P_out = [I_local[i] * V_nodes[i] for i in range(N)]
+    # Final power output
+    P_out = []
+    for i in range(N):
+        power = st.session_state.I_local[i] * V_nodes[i]
+        power = min(power, CAP_W)
+        P_out.append(power)
+
     return V_nodes, P_out, line_I, drop_seg
 
-# Run simulation
+# Run sim
 V_nodes, P_out, line_I, drop_seg = solve(st.session_state.load_W, st.session_state.I_local)
 st.session_state.V_nodes = V_nodes
 
-# Sidebar output
+# Sidebar recap
 for i in range(N):
     st.sidebar.markdown(
-        f"**Inverter {i+1}** — V = **{V_nodes[i]:.1f} V** | "
-        f"I = **{st.session_state.I_local[i]:.2f} A** | "
+        f"**Inverter {i+1}** — V = **{V_nodes[i]:.1f} V**, "
+        f"I = **{st.session_state.I_local[i]:.2f} A**, "
         f"P = **{P_out[i]:.0f} W**"
     )
 
@@ -103,7 +104,7 @@ col3.metric("Frequency (Hz)", "60.00")
 st.subheader("Mesh Grid Visualisation")
 fig, ax = plt.subplots(figsize=(12, 4))
 
-spacing = 3.5  # horizontal distance between inverters
+spacing = 3.5
 for i in range(N):
     x = i * spacing
     ax.plot([x, x], [0, 0.4], 'k', lw=2)
@@ -118,7 +119,6 @@ for i in range(N):
     if i == leader_idx:
         ax.text(x, 0.45, "Leader", ha='center', color='gold')
 
-# Power line drawing
 for seg in range(N - 1):
     x0, x1 = seg * spacing, (seg + 1) * spacing
     ax.plot([x0, x1], [0.4, 0.4], '--', color='gray')
