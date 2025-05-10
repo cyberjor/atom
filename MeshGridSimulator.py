@@ -48,6 +48,8 @@ for i in range(num_inverters):
         # Calculate and display actual inverter output
         voltage, current, actual_power = calculate_voltage_from_power(power)
         st.markdown(f"**Inverter Power Output:** {actual_power:.2f} W")
+        if voltage < V_WARNING:
+            st.error(f"⚠️ Voltage sag detected: {voltage:.2f} V")
 
 # Step 2: Leader logic
 leader_power = manual_powers[leader_index]
@@ -110,16 +112,17 @@ for i, ld in enumerate(load_data):
 # Draw lines and voltage drops with arrows
 for i in range(num_inverters - 1):
     x0, x1 = i * 2, (i + 1) * 2
-    i0_current = load_data[i]["Current (A)"]
-    i1_current = load_data[i+1]["Current (A)"]
-    current_flow = i1_current - i0_current
+    p0_net = load_data[i]["Power (W)"] - load_data[i]["Local Load (W)"]
+    p1_net = load_data[i+1]["Power (W)"] - load_data[i+1]["Local Load (W)"]
+    power_flow = p0_net - p1_net
     if load_data[i]["Power (W)"] > 0 or load_data[i+1]["Power (W)"] > 0:
-        voltage_drop = abs(current_flow) * R_LINE
+        voltage_drop = abs(power_flow / V_NOMINAL) * R_LINE
         ax.plot([x0, x1], [0.33, 0.33], color='gray', linestyle='--')
         ax.text((x0 + x1)/2, 0.36, f"{voltage_drop:.2f} V", ha='center', fontsize=8, color='red')
-        arrow_dir = 1 if current_flow < 0 else -1
-        ax.annotate('', xy=(x1 - arrow_dir * 0.3, 0.34), xytext=(x1, 0.34),
-                    arrowprops=dict(arrowstyle='->', color='green', lw=1.5))
+        if abs(power_flow) > 1:
+            direction = -1 if power_flow > 0 else 1
+            ax.annotate('', xy=(x1 - direction * 0.3, 0.34), xytext=(x1, 0.34),
+                        arrowprops=dict(arrowstyle='->', color='green', lw=1.5))
 
 ax.set_xlim(-1, 2 * num_inverters)
 ax.set_ylim(-0.1, 1)
@@ -131,3 +134,4 @@ if frequency_shift > 0:
     st.warning("System is overloaded — frequency drop may cause instability!")
 if any(ld["Voltage (V)"] < V_NOMINAL for ld in load_data):
     st.warning("One or more inverters are voltage sagging to meet power limits!")
+
