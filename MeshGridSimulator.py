@@ -62,7 +62,7 @@ def solve_network(req_power):
         P_out.append(p); I_out.append(i)
         if i < N-1:
             # net surplus power to left of next segment
-            surplus_left = sum(P_out[:i+1]) - sum(st.session_state.base_load[:i+1])
+            surplus_left = float(np.sum(P_out[:i+1]) - np.sum(st.session_state.base_load[:i+1]))
             line_I = surplus_left / v if v else 0.0  # use upstream voltage
             vd = abs(line_I) * R_LINE
             drop_seg.append(vd)
@@ -127,7 +127,7 @@ for i in range(N):
         vd=drop_seg[i]
         ax.text(mid,0.36,f"{vd:.2f} V",ha='center',fontsize=8,color='red')
         if vd>1e-3:
-            surplus_left = sum(P_out[:i+1]) - sum(st.session_state.base_load[:i+1])
+            surplus_left = float(np.sum(P_out[:i+1]) - np.sum(st.session_state.base_load[:i+1]))
             direction = -1 if surplus_left<0 else 1
             ax.annotate('',xy=(mid+0.3*direction,0.34),xytext=(mid-0.3*direction,0.34),arrowprops=dict(arrowstyle='->',color='green'))
 
@@ -139,5 +139,3 @@ st.pyplot(fig)
 # --------------- Warning -----------------
 if any(v < WARN_V for v in V_node):
     st.warning("Some nodes below 225 V — keep stepping until all recover.")
-
-
