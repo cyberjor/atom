@@ -102,9 +102,7 @@ for i, ld in enumerate(load_data):
     ax.plot([x, x], [0, 0.3], color='black', lw=2)
     ax.plot([x-0.05, x+0.05], [0.3, 0.33], color='black', lw=2)
     ax.text(x, 0.35, f"Inv {i+1}", ha='center', fontsize=9, weight='bold')
-    # Load bar
     ax.bar(x - 0.2, ld["Local Load (W)"] / 10000, width=0.15, color='orange', bottom=0.4)
-    # Inverter output bar
     ax.bar(x + 0.05, ld["Power (W)"] / 10000, width=0.15, color='steelblue', bottom=0.4)
     if i == leader_index:
         ax.text(x, -0.05, "Leader", ha='center', va='top', fontsize=8, weight='bold', color='gold')
@@ -115,12 +113,13 @@ for i in range(num_inverters - 1):
     i0_current = load_data[i]["Current (A)"]
     i1_current = load_data[i+1]["Current (A)"]
     current_flow = i1_current - i0_current
-    voltage_drop = abs(current_flow) * R_LINE
-    ax.plot([x0, x1], [0.33, 0.33], color='gray', linestyle='--')
-    ax.text((x0 + x1)/2, 0.36, f"{voltage_drop:.2f} V", ha='center', fontsize=8, color='red')
-    arrow_dir = 1 if current_flow < 0 else -1
-    ax.annotate('', xy=(x1 - arrow_dir * 0.3, 0.34), xytext=(x1, 0.34),
-                arrowprops=dict(arrowstyle='->', color='green', lw=1.5))
+    if load_data[i]["Power (W)"] > 0 or load_data[i+1]["Power (W)"] > 0:
+        voltage_drop = abs(current_flow) * R_LINE
+        ax.plot([x0, x1], [0.33, 0.33], color='gray', linestyle='--')
+        ax.text((x0 + x1)/2, 0.36, f"{voltage_drop:.2f} V", ha='center', fontsize=8, color='red')
+        arrow_dir = 1 if current_flow < 0 else -1
+        ax.annotate('', xy=(x1 - arrow_dir * 0.3, 0.34), xytext=(x1, 0.34),
+                    arrowprops=dict(arrowstyle='->', color='green', lw=1.5))
 
 ax.set_xlim(-1, 2 * num_inverters)
 ax.set_ylim(-0.1, 1)
@@ -132,4 +131,3 @@ if frequency_shift > 0:
     st.warning("System is overloaded — frequency drop may cause instability!")
 if any(ld["Voltage (V)"] < V_NOMINAL for ld in load_data):
     st.warning("One or more inverters are voltage sagging to meet power limits!")
-
