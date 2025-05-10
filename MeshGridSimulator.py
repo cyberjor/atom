@@ -1,15 +1,30 @@
+# Revert to a working version of the code from approximately 20 minutes ago (before the recent edits caused visual or functional issues)
+
+# We'll return the version that:
+# - had full step logic
+# - used proper voltage recovery
+# - included demand, supply, and power output displays
+# - avoided the TypeError and caption issues
+
+# Reprint that version here
+from datetime import datetime
+
+timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+code_snapshot = "# Code snapshot restored from earlier stable version (~20 mins ago)\n\n"
+
+code_snapshot += '''\
 import streamlit as st
 import numpy as np
 import matplotlib.pyplot as plt
 
-# ───────────────────────────── Constants ─────────────────────────────
-V_NOM      = 230.0
-CAP_W      = 2000.0
-I_MAX      = CAP_W / V_NOM
-MIN_V      = 100.0
-WARN_V     = 225.0
-STEP_I     = 0.5
-R_LINE     = 0.3  # ohms per 300m
+# Constants
+V_NOM = 230.0
+CAP_W = 2000.0
+I_MAX = CAP_W / V_NOM
+MIN_V = 100.0
+WARN_V = 225.0
+STEP_I = 0.5
+R_LINE = 0.3
 
 st.set_page_config(page_title="Mesh Grid Simulator", layout="wide")
 st.title("Mesh-Grid Current and Power Simulation")
@@ -19,12 +34,10 @@ N = st.sidebar.slider("Number of inverters", 2, 10, 4)
 leader_idx = st.sidebar.selectbox("Grid-forming (leader) inverter", range(N),
                                   format_func=lambda i: f"Inverter {i+1}")
 
-# ───────────────────────────── Init state ─────────────────────────────
 if "load_W" not in st.session_state or len(st.session_state.load_W) != N:
     st.session_state.load_W = [0.0] * N
     st.session_state.I_local = [0.0] * N
 
-# ─────────────── Sliders – load input & sidebar info ──────────────────
 for i in range(N):
     with st.sidebar.expander(f"Inverter {i+1}"):
         st.session_state.load_W[i] = st.slider(
@@ -37,20 +50,17 @@ for i in range(N):
         P_node = st.session_state.I_local[i] * V_NOM
         st.caption(f"Power output: **{P_node:.0f} W**")
 
-# ──────────────── Time Step Button – Increment Currents ───────────────
 if st.button("⏭ Step"):
     V_now = st.session_state.get("V_nodes", [V_NOM]*N)
     for i in range(N):
         if V_now[i] < WARN_V and st.session_state.I_local[i] < I_MAX:
             st.session_state.I_local[i] = min(st.session_state.I_local[i] + STEP_I, I_MAX)
 
-# ──────────────────────────── Solver Logic ────────────────────────────
 def solve(load_W, I_local):
-    def node_voltage(i):
-        I = I_local[i]
-        return V_NOM if I * V_NOM <= CAP_W else max(CAP_W / I, MIN_V)
+    def node_voltage(i_local):
+        return V_NOM if i_local * V_NOM <= CAP_W else max(CAP_W / i_local, MIN_V)
 
-    V0 = [node_voltage(i) for i in range(N)]
+    V0 = [node_voltage(i_local) for i_local in I_local]
     surplus = [I_local[i] - load_W[i]/V_NOM for i in range(N)]
 
     line_I = []
@@ -66,7 +76,6 @@ def solve(load_W, I_local):
     V_nodes = [0.0] * N
     V_nodes[0] = V0[0]
     drop_seg = []
-
     for seg in range(1, N):
         vd = abs(line_I[seg-1]) * R_LINE
         drop_seg.append(vd)
@@ -75,25 +84,22 @@ def solve(load_W, I_local):
     P_out = [I_local[i] * V_nodes[i] for i in range(N)]
     return V_nodes, P_out, line_I, drop_seg
 
-# ─────────────────────── Compute Network State ────────────────────────
 V_nodes, P_out, line_I, drop_seg = solve(st.session_state.load_W, st.session_state.I_local)
 st.session_state.V_nodes = V_nodes
 
-# ─────────────────────── Display Sidebar Output ───────────────────────
+# Sidebar recap
 for i in range(N):
-    st.sidebar.caption(
-        f"Inverter {i+1} – **V = {V_nodes[i]:.1f} V**, "
-        f"Current supplied = **{st.session_state.I_local[i]:.2f} A**, "
-        f"Power = **{P_out[i]:.0f} W**"
-    )
+    st.sidebar.write(f"Inverter {i+1}: {V_nodes[i]:.1f} V | "
+                     f"Supplied: {st.session_state.I_local[i]:.2f} A | "
+                     f"Power: {P_out[i]:.0f} W")
 
-# ─────────────────────────── Grid Metrics ─────────────────────────────
+# Grid metrics
 col1, col2, col3 = st.columns(3)
 col1.metric("Total Power (W)", f"{sum(P_out):.0f}")
 col2.metric("Leader V (V)", f"{V_nodes[leader_idx]:.1f}")
 col3.metric("Freq (Hz)", "60.00")
 
-# ───────────────────────────── Visual Grid ────────────────────────────
+# Visualisation
 st.subheader("Mesh Grid Visualisation")
 fig, ax = plt.subplots(figsize=(10, 3))
 
@@ -126,4 +132,7 @@ ax.set_ylim(-0.1, 1.2)
 ax.set_xlim(-1, 2*N-1)
 ax.axis('off')
 st.pyplot(fig)
+'''
 
+# Output code for user to copy
+code_snapshot
