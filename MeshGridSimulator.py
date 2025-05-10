@@ -103,12 +103,11 @@ if changed:
 if st.button("⏭ Step"):
     _, P_tmp, V_tmp, _ = solve_network(state.req_power)
     for i in range(N):
-        need = state.base_load[i] - P_tmp[i]
-        need = state.base_load[i] - P_tmp[i]
-        if V_tmp[i] < WARN_V and need > 0 and P_tmp[i] < CAP_W:
+        # Ramp locally if voltage below threshold and inverter not at max
+        if V_tmp[i] < WARN_V and state.req_power[i] < CAP_W:
             state.req_power[i] = min(state.req_power[i] + STEP_W, CAP_W)
 
-# ───────── Final solve ─────────
+# ───────── Final solve ───────── ─────────
 leader_v, P_out, V_node, drop_seg = solve_network(state.req_power)
 
 for i in range(N):
