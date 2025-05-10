@@ -2,6 +2,7 @@ import streamlit as st
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 
 # Title
 st.title("Mesh Grid Current and Power Simulation")
@@ -18,15 +19,15 @@ leader_index = st.sidebar.selectbox("Select Grid-Forming (Leader) Inverter", opt
 manual_powers = []
 
 # Constants
-V_NOMINAL = 230  # nominal voltage
-F_NOMINAL = 60.0  # nominal frequency
-INVERTER_CAPACITY = 2000  # 2 kW per inverter
-I_MAX_CONTINUOUS = 8.0  # max continuous current in A
-I_MAX_INPUT = 15.0  # max current input via slider
-V_MIN = 100  # minimum voltage allowed for sagging calculation
-V_WARNING = 225  # threshold for voltage sag warning
+V_NOMINAL = 230
+F_NOMINAL = 60.0
+INVERTER_CAPACITY = 2000
+I_MAX_CONTINUOUS = 8.0
+I_MAX_INPUT = 15.0
+V_MIN = 100
+V_WARNING = 225
 
-# Voltage sag function based on current draw
+# Voltage sag function
 def calculate_voltage_from_power(power):
     current = power / V_NOMINAL
     if power <= INVERTER_CAPACITY:
@@ -42,11 +43,10 @@ for i in range(num_inverters):
         power = st.slider("Power Draw (W)", 0.0, 3000.0, 1000.0, step=50.0, key=f"power_{i}")
         manual_powers.append(power)
 
-# Step 2: Apply logic based on leader inverter voltage
+# Step 2: Leader logic
 leader_power = manual_powers[leader_index]
 leader_voltage, leader_current, actual_leader_power = calculate_voltage_from_power(leader_power)
 
-# If voltage is too low, try to compensate using remaining inverters
 adjusted_powers = manual_powers.copy()
 if leader_voltage < V_WARNING:
     deficit_power = leader_power - INVERTER_CAPACITY
@@ -63,7 +63,7 @@ if leader_voltage < V_WARNING:
             if remaining_deficit <= 0:
                 break
 
-# Step 3: Calculate outputs based on adjusted powers
+# Step 3: Calculate outputs
 load_data = []
 for i in range(num_inverters):
     power = adjusted_powers[i]
@@ -78,24 +78,42 @@ for i in range(num_inverters):
     if voltage < V_WARNING:
         st.sidebar.error(f"⚠️ Voltage sag detected: {voltage:.2f} V")
 
-# Compute total system performance
+# Grid stats
 total_power = sum(ld["Power (W)"] for ld in load_data)
 grid_voltage = load_data[leader_index]["Voltage (V)"] if load_data else V_NOMINAL
-frequency_shift = max(0, (total_power - num_inverters * INVERTER_CAPACITY) / 1000 * 0.5)  # 0.5 Hz per kW overload
+frequency_shift = max(0, (total_power - num_inverters * INVERTER_CAPACITY) / 1000 * 0.5)
 
-# Display results
+# Results
 st.subheader("Grid State")
 st.metric("Total Power (W)", f"{total_power:.0f}")
 st.metric("Grid Voltage (V)", f"{grid_voltage:.2f}")
 st.metric("Grid Frequency (Hz)", f"{F_NOMINAL - frequency_shift:.2f}")
 
-# Dataframe and plots
-df = pd.DataFrame(load_data)
-fig, ax = plt.subplots(figsize=(10, 4))
-ax.bar(df["Inverter"], df["Power (W)"], label="Power (W)", color='steelblue')
-ax.set_ylabel("Power (W)")
-ax.set_title("Power Output per Inverter")
-ax.set_ylim(0, 2000)
+# Visualize mesh grid
+st.subheader("Mesh Grid Visualization")
+fig, ax = plt.subplots(figsize=(12, 4))
+
+for i, ld in enumerate(load_data):
+    x = i * 2
+    # Draw power pole
+    ax.plot([x, x], [0, 2], color='black', lw=2)
+    ax.plot([x-0.2, x+0.2], [2, 2.2], color='black', lw=2)
+    ax.text(x, 2.3, f"Inv {i+1}", ha='center', fontsize=9, weight='bold')
+    # Draw load bar
+    ax.bar(x, ld["Power (W)"], width=0.5, color='steelblue')
+    # Leader highlight
+    if i == leader_index:
+        ax.add_patch(mpatches.Circle((x, 2.6), 0.3, color='gold', zorder=5))
+        ax.text(x, 2.6, "Leader", ha='center', va='center', fontsize=8, weight='bold')
+
+# Draw lines between inverters
+for i in range(num_inverters - 1):
+    x0, x1 = i * 2, (i + 1) * 2
+    ax.plot([x0, x1], [2.2, 2.2], color='gray', linestyle='--')
+
+ax.set_xlim(-1, 2 * num_inverters)
+ax.set_ylim(0, 3000)
+ax.axis('off')
 st.pyplot(fig)
 
 # Warnings
@@ -103,4 +121,3 @@ if frequency_shift > 0:
     st.warning("System is overloaded — frequency drop may cause instability!")
 if any(ld["Voltage (V)"] < V_NOMINAL for ld in load_data):
     st.warning("One or more inverters are voltage sagging to meet power limits!")
-
