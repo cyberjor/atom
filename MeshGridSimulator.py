@@ -91,28 +91,28 @@ st.metric("Grid Frequency (Hz)", f"{F_NOMINAL - frequency_shift:.2f}")
 
 # Visualize mesh grid
 st.subheader("Mesh Grid Visualization")
-fig, ax = plt.subplots(figsize=(12, 4))
+fig, ax = plt.subplots(figsize=(12, 2.5))  # Adjusted to make poles ~2 inches on screen
 
 for i, ld in enumerate(load_data):
     x = i * 2
-    # Draw power pole
-    ax.plot([x, x], [0, 2], color='black', lw=2)
-    ax.plot([x-0.2, x+0.2], [2, 2.2], color='black', lw=2)
-    ax.text(x, 2.3, f"Inv {i+1}", ha='center', fontsize=9, weight='bold')
-    # Draw load bar
-    ax.bar(x, ld["Power (W)"], width=0.5, color='steelblue')
+    # Draw power pole (scaled to screen height)
+    ax.plot([x, x], [0, 0.3], color='black', lw=2)
+    ax.plot([x-0.05, x+0.05], [0.3, 0.33], color='black', lw=2)
+    ax.text(x, 0.35, f"Inv {i+1}", ha='center', fontsize=9, weight='bold')
+    # Draw load bar (scaled)
+    ax.bar(x, ld["Power (W)"] / 10000, width=0.3, color='steelblue', bottom=0.4)
     # Leader highlight
     if i == leader_index:
-        ax.add_patch(mpatches.Circle((x, 2.6), 0.3, color='gold', zorder=5))
-        ax.text(x, 2.6, "Leader", ha='center', va='center', fontsize=8, weight='bold')
+        ax.add_patch(mpatches.Circle((x, 0.55), 0.08, color='gold', zorder=5))
+        ax.text(x, 0.55, "Leader", ha='center', va='center', fontsize=8, weight='bold')
 
 # Draw lines between inverters
 for i in range(num_inverters - 1):
     x0, x1 = i * 2, (i + 1) * 2
-    ax.plot([x0, x1], [2.2, 2.2], color='gray', linestyle='--')
+    ax.plot([x0, x1], [0.33, 0.33], color='gray', linestyle='--')
 
 ax.set_xlim(-1, 2 * num_inverters)
-ax.set_ylim(0, 3000)
+ax.set_ylim(0, 0.7)
 ax.axis('off')
 st.pyplot(fig)
 
@@ -121,3 +121,4 @@ if frequency_shift > 0:
     st.warning("System is overloaded — frequency drop may cause instability!")
 if any(ld["Voltage (V)"] < V_NOMINAL for ld in load_data):
     st.warning("One or more inverters are voltage sagging to meet power limits!")
+
