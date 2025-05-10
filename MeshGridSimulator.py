@@ -59,61 +59,49 @@ def inv_terminal(I_req: float, I_need: float, v_up: float):
 
 
 def solve(req_I):
-    """Sequential power‑flow solve.
+    """Two‑pass power‑flow solve with leader‑voltage recovery.
 
-    For each node from leader → right:
-    1. Incoming surplus_P (W) arrives from the left.
-    2. Remaining load to cover = max(load_i – surplus_P, 0).
-    3. Inverter supplies I_sup = min(I_req, remaining_load / V_up, I_MAX).
-       • If I_req > I_MAX, voltage droops so power ≤ 2 kW.
-    4. Update surplus_P = surplus_P + P_supplied – load_i.
-    5. Compute line drop to next node using that surplus_P.
+    Pass 1  – assume leader supplies its requested current; propagate → right.
+    Pass 2  – compute **effective** leader current after followers’ contribution and
+               re‑compute node voltages & drops with updated leader voltage.
     """
-    leader_I = req_I[leader_idx]
-    leader_v = V_NOM if leader_I <= I_MAX else max(CAP_W / leader_I, MIN_V)
+    # ---- pass 1 ----
+    def forward(v_leader):
+        I_sup, P_sup, V_node, drop_seg = [], [], [], []
+        cum_drop = 0.0
+        surplus_P = 0.0
+        for i in range(N):
+            v_up = v_leader - cum_drop
+            rem_P = max(state.load_W[i] - surplus_P, 0.0)
+            I_need = rem_P / v_up if v_up else 0.0
+            I_out, P_out, v_node = inv_terminal(req_I[i], I_need, v_up)
+            I_sup.append(I_out); P_sup.append(P_out); V_node.append(v_node)
+            surplus_P += P_out - state.load_W[i]
+            if i < N-1:
+                line_I = surplus_P / v_node if v_node else 0.0
+                v_d = abs(line_I) * R_LINE
+                drop_seg.append(v_d)
+                cum_drop += v_d
+        return I_sup, P_sup, V_node, drop_seg, surplus_P
 
-    I_sup, P_sup, V_node, drop_seg = [], [], [], []
-    cum_drop = 0.0
-    surplus_P = 0.0  # power flowing rightward (W)
+    # first assumption: leader voltage droops based on its own request
+    leader_I_req = req_I[leader_idx]
+    v_leader = V_NOM if leader_I_req <= I_MAX else max(CAP_W / leader_I_req, MIN_V)
+    I1, P1, V1, drop1, surplus_tail = forward(v_leader)
 
-    for i in range(N):
-        v_up = leader_v - cum_drop
+    # power arriving at leader from followers (negative surplus at node 0 left side)
+    imported_P = max(- (P1[0] - state.load_W[0]), 0.0)
+    eff_I_leader = (state.load_W[0] - imported_P) / V_NOM
 
-        # incoming power meets part of the load
-        remaining_P = max(state.load_W[i] - surplus_P, 0.0)
-        I_needed   = remaining_P / v_up if v_up else 0.0
+    # recompute leader voltage with effective current
+    v_leader_new = V_NOM if eff_I_leader <= I_MAX else max(CAP_W / eff_I_leader, MIN_V)
 
-        # requested & limited current
-        I_target = req_I[i]  # allow > I_MAX; sag handled inside inv_terminal
-        I_supplied = min(I_target, I_needed)
+    if abs(v_leader_new - v_leader) < 1e-3:
+        return v_leader_new, I1, P1, V1, drop1
 
-        # voltage sag if I_target > I_MAX (already limited) handled implicitly
-        # If inverter asked for >I_MAX, it's already capped.
-        # Compute terminal voltage for sag IF current demand > I_MAX
-        if I_target > I_MAX:
-            v_term = max(CAP_W / I_target, MIN_V)
-            v_term = min(v_term, v_up)
-        else:
-            v_term = v_up
-
-        P_out_i = I_supplied * v_term
-
-        # record metrics
-        I_sup.append(I_supplied)
-        P_sup.append(P_out_i)
-        V_node.append(v_term)
-
-        # update surplus (positive → power available to right)
-        surplus_P += P_out_i - state.load_W[i]
-
-        # line drop to next node
-        if i < N - 1:
-            line_I = surplus_P / v_term if v_term else 0.0
-            v_d = abs(line_I) * R_LINE
-            drop_seg.append(v_d)
-            cum_drop += v_d
-
-    return leader_v, I_sup, P_sup, V_node, drop_seg
+    # ---- pass 2 with recovered leader voltage ----
+    I2, P2, V2, drop2, _ = forward(v_leader_new)
+    return v_leader_new, I2, P2, V2, drop2
 
 # ───────── Sidebar sliders ─────────
 SIDE.subheader("Loads & Currents")
@@ -181,4 +169,3 @@ st.pyplot(fig)
 
 if any(v < WARN_V for v in V_node):
     st.warning("Some nodes below 225 V — tap ⏭ Step until recovered.")
-
