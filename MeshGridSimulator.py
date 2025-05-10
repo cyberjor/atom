@@ -49,7 +49,6 @@ for i in range(num_inverters):
         voltage, current, actual_power = calculate_voltage_from_power(power)
         st.markdown(f"**Inverter Power Output:** {actual_power:.2f} W")
         if voltage < V_WARNING:
-        st.error(f"⚠️ Voltage sag detected: {voltage:.2f} V")
 
 # Step 2: Leader logic
 leader_power = manual_powers[leader_index]
