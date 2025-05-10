@@ -21,7 +21,7 @@ INVERTER_CAPACITY = 2000  # 2 kW per inverter
 
 for i in range(num_inverters):
     with st.sidebar.expander(f"Inverter {i+1} Load"):
-        load = st.slider("Local Load (W)", 0, 2000, 500, step=50, key=f"load_{i}")
+        load = st.slider("Local Load (W)", 0, 2500, 500, step=50, key=f"load_{i}")
         load_data.append({
             "Inverter": f"Inv {i+1}",
             "Load": load
