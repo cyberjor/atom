@@ -134,7 +134,7 @@ for i in range(num_inverters - 1):
         # no meaningful transfer → no arrow, zero drop label
         ax.text(mid_x, 0.36, "0.00 V", ha='center', fontsize=8, color='gray')
 
-ax.set_xlim(-1, 2 * num_inverters)(-1, 2*num_inverters)
+ax.set_xlim(-1, 2 * num_inverters)
 ax.set_ylim(-0.1, 1)
 ax.axis('off')
 st.pyplot(fig)
