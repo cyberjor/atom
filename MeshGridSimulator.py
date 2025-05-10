@@ -101,9 +101,11 @@ for i in range(N):
     ax.text(x, 0.34, f"{V_nodes[i]:.0f} V", ha='center', color='purple', fontsize=8)
 
     demand = st.session_state.load_W[i] / 10000
-    supply = max(P_out[i] / 10000, 0.001)  # Ensures visible blue bar
+    plot_supply = P_out[i] / 10000
+    if plot_supply == 0 and st.session_state.I_local[i] > 0:
+        plot_supply = 0.002  # ensures tiny but visible bar
     ax.bar(x - 0.15, demand, width=0.1, color='orange', bottom=0.6)
-    ax.bar(x + 0.05, supply, width=0.1, color='steelblue', bottom=0.6)
+    ax.bar(x + 0.05, plot_supply, width=0.1, color='steelblue', bottom=0.6)
 
     if i == leader_idx:
         ax.text(x, -0.05, "Leader", ha='center', color='gold')
