@@ -135,4 +135,3 @@ st.pyplot(fig)
 # ----- Warnings -----
 if leader_v<V_NOM:
     st.warning("Leader voltage sagging – press ⏭ Step to redistribute load.")
-
