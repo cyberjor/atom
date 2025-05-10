@@ -105,10 +105,10 @@ for idx, d in enumerate(load_data):
     ax.text(x, 0.35, d["name"], ha='center', fontsize=9, weight='bold')
     # Display inverter voltage just below the label
     # voltage above inverter label to avoid overlap
-    ax.text(x, 0.48, f"{d['V']:.0f} V", ha='center', fontsize=8, color='purple')
+    ax.text(x, 0.55, f"{d['V']:.0f} V", ha='center', fontsize=8, color='purple')
     # Local load (orange) & inverter output (blue)
-    ax.bar(x-0.2, d["P_load"] / 10000, 0.15, bottom=0.5, color='orange')
-    ax.bar(x + 0.05, d["P_out"] / 10000, 0.15, bottom=0.5, color='steelblue')
+    ax.bar(x-0.2, d["P_load"] / 10000, 0.15, bottom=0.6, color='orange')
+    ax.bar(x + 0.05, d["P_out"] / 10000, 0.15, bottom=0.6, color='steelblue')
     if idx == leader_index:
         ax.text(x, -0.05, "Leader", ha='center', va='top', fontsize=8, weight='bold', color='gold')
 
@@ -138,7 +138,7 @@ for i in range(num_inverters - 1):
         ax.text(mid_x, 0.36, "0.00 V", ha='center', fontsize=8, color='gray')
 
 ax.set_xlim(-1, 2 * num_inverters)
-ax.set_ylim(-0.1, 1.2)
+ax.set_ylim(-0.1, 1.3)
 ax.axis('off')
 st.pyplot(fig)
 
