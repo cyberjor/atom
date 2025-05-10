@@ -48,7 +48,6 @@ for i in range(num_inverters):
         # Calculate and display actual inverter output
         voltage, current, actual_power = calculate_voltage_from_power(power)
         st.markdown(f"**Inverter Power Output:** {actual_power:.2f} W")
-        if voltage < V_WARNING:
 
 # Step 2: Leader logic
 leader_power = manual_powers[leader_index]
