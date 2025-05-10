@@ -55,7 +55,6 @@ def solve(load_W, I_local):
         cum += surplus[seg]
         line_I.insert(0, cum)
 
-    # Leader: compute effective current after import
     import_I = line_I[0] if line_I else 0.0
     eff_I0 = max(I_local[leader_idx] - import_I, 0.0)
 
@@ -96,13 +95,13 @@ col3.metric("Frequency (Hz)", "60.00")
 
 # Visualization
 st.subheader("Mesh Grid Visualisation")
-fig, ax = plt.subplots(figsize=(10, 3))
+fig, ax = plt.subplots(figsize=(12, 4))
 
+spacing = 3.5  # increased spacing
 for i in range(N):
-    x = i * 2
+    x = i * spacing
     ax.plot([x, x], [0, 0.4], 'k', lw=2)
 
-    # Moved labels up
     ax.text(x, 0.55, f"Inv {i+1}", ha='center', fontsize=9)
     ax.text(x, 0.50, f"{V_nodes[i]:.0f} V", ha='center', color='purple', fontsize=8)
 
@@ -116,18 +115,18 @@ for i in range(N):
 
 # Draw lines & arrows
 for seg in range(N - 1):
-    x0, x1 = seg * 2, (seg + 1) * 2
+    x0, x1 = seg * spacing, (seg + 1) * spacing
     ax.plot([x0, x1], [0.4, 0.4], '--', color='gray')
     vd = drop_seg[seg]
     ax.text((x0 + x1)/2, 0.44, f"{vd:.2f} V", ha='center', color='red', fontsize=8)
 
     if abs(line_I[seg]) > 0.01:
         direction = -1 if line_I[seg] > 0 else 1
-        ax.annotate('', xy=((x0 + x1)/2 + direction * 0.3, 0.405),
-                    xytext=((x0 + x1)/2 - direction * 0.3, 0.405),
+        ax.annotate('', xy=((x0 + x1)/2 + direction * 0.5, 0.405),
+                    xytext=((x0 + x1)/2 - direction * 0.5, 0.405),
                     arrowprops=dict(arrowstyle='->', color='green'))
 
 ax.set_ylim(-0.1, 1.3)
-ax.set_xlim(-1, 2 * N - 1)
+ax.set_xlim(-1, spacing * (N - 1) + 2)
 ax.axis('off')
 st.pyplot(fig)
