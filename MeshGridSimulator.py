@@ -89,11 +89,11 @@ def solve(req_I):
 
     I1, P1, V1, drop1, leader_surplus1 = forward(v_leader_initial)
 
-    # power imported to leader from followers (negative surplus means import)
-    imported_P = max(-leader_surplus1, 0.0)
+        # power imported to leader from followers = max(total follower surplus, 0)
+    imported_P = max(sum(P1[1:]) - sum(state.load_W[1:]), 0.0)
     eff_leader_I = max((state.load_W[0] - imported_P) / V_NOM, 0.0)
 
-    v_leader_recovered = V_NOM if eff_leader_I <= I_MAX else max(CAP_W / eff_leader_I, MIN_V)
+    v_leader_recovered = V_NOM if eff_leader_I <= I_MAX else max(CAP_W / eff_leader_I, MIN_V) = V_NOM if eff_leader_I <= I_MAX else max(CAP_W / eff_leader_I, MIN_V)
 
     # if voltage changed appreciably, propagate again
     if abs(v_leader_recovered - v_leader_initial) > 1e-3:
