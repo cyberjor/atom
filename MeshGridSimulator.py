@@ -103,6 +103,8 @@ for idx, d in enumerate(load_data):
     ax.plot([x, x], [0, 0.3], color='black', lw=2)
     ax.plot([x-0.05, x+0.05], [0.3, 0.33], color='black', lw=2)
     ax.text(x, 0.35, d["name"], ha='center', fontsize=9, weight='bold')
+    # Display inverter voltage just below the label
+    ax.text(x, 0.30, f"{d['V']:.0f} V", ha='center', fontsize=8, color='purple')
     # Local load (orange) & inverter output (blue)
     ax.bar(x-0.2, d["P_load"]/10000, 0.15, bottom=0.4, color='orange')
     ax.bar(x+0.05, d["P_out"]/10000, 0.15, bottom=0.4, color='steelblue')
