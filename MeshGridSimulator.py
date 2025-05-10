@@ -42,11 +42,27 @@ if len(state.base_load) != N:
 
 # ───────── Helper functions ─────────
 
-def inv_output(p_req: float, v_term: float):
-    """Clip power to CAP_W at terminal voltage and return (P_out, I_out)."""
-    p_out = min(p_req, CAP_W)
-    i_out = p_out / v_term if v_term else 0.0
-    return p_out, i_out
+I_MAX = CAP_W / V_NOM  # 8.7 A continuous
+
+def inv_output(p_req: float, v_base: float):
+    """Return (P_out, I_out, v_term)
+
+    • If the load’s nominal‑current demand ≤ I_MAX, deliver requested power at v_base.
+    • If current demand > I_MAX, clip power to CAP_W and droop the local voltage so that
+      current demand is met (v_term = CAP_W / I_req, floor at MIN_V).
+    """
+    I_req = p_req / V_NOM if V_NOM else 0.0
+    if I_req <= I_MAX:
+        v_term = v_base
+        p_out  = min(p_req, CAP_W)
+        I_out  = p_out / v_term if v_term else 0.0
+    else:
+        # voltage sag to keep power ≤ CAP_W while providing the requested current
+        v_term = max(CAP_W / I_req, MIN_V)
+        v_term = min(v_term, v_base)  # can’t exceed upstream voltage
+        p_out  = CAP_W
+        I_out  = I_req
+    return p_out, I_out, v_term
 
 
 def solve_network(req_power):
@@ -91,6 +107,8 @@ placeholders = []
 for i in range(N):
     with SIDE.expander(f"Inverter {i+1}"):
         val = st.slider("Load", 0.0, 3000.0, state.base_load[i], 50.0, key=f"load_{i}")
+        # Nominal current demand at 230 V
+        st.markdown(f"**Current demand:** {val / V_NOM:.2f} A")
         if val != state.base_load[i]:
             changed = True
             state.base_load[i] = val
@@ -158,5 +176,6 @@ st.pyplot(fig)
 # ───────── Warning ─────────
 if any(v < WARN_V for v in V_node):
     st.warning("Nodes below 225 V — press ⏭ Step until all recover.")
+
 
 
