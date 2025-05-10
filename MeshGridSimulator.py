@@ -178,4 +178,3 @@ st.pyplot(fig)
 
 if any(v < WARN_V for v in V_node):
     st.warning("Some nodes below 225 V — tap ⏭ Step until recovered.")
-
