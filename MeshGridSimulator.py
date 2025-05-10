@@ -48,7 +48,7 @@ placeholders = []  # to update after adjustment
 for i in range(num_inverters):
     with st.sidebar.expander(f"Inverter {i+1} Settings"):
         p_draw = st.slider(
-            "Power Draw (W)", 0.0, 3000.0, 1000.0, 50.0, key=f"p_{i}")
+            "Power Draw (W)", 0.0, 3000.0, 0.0, 50.0, key=f"p_{i}")
         manual_powers.append(p_draw)
         v0, _, _ = inverter_model(p_draw)
         if v0 < V_WARNING:
@@ -105,7 +105,7 @@ for idx, d in enumerate(load_data):
     ax.text(x, 0.35, d["name"], ha='center', fontsize=9, weight='bold')
     # Display inverter voltage just below the label
     # voltage above inverter label to avoid overlap
-    ax.text(x, 0.40, f"{d['V']:.0f} V", ha='center', fontsize=8, color='purple')
+    ax.text(x, 0.45, f"{d['V']:.0f} V", ha='center', fontsize=8, color='purple')
     # Local load (orange) & inverter output (blue)
     ax.bar(x-0.2, d["P_load"]/10000, 0.15, bottom=0.4, color='orange')
     ax.bar(x+0.05, d["P_out"]/10000, 0.15, bottom=0.4, color='steelblue')
@@ -147,4 +147,5 @@ if frequency_shift > 0:
     st.warning("System is overloaded — frequency drop may cause instability!")
 if any(d["V"] < V_NOMINAL for d in load_data):
     st.warning("One or more inverters are voltage sagging to meet power limits!")
+
 
