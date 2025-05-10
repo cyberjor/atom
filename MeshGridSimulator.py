@@ -83,7 +83,6 @@ for i in range(num_inverters):
         "Power (W)": actual_power,
         "Local Load (W)": manual_powers[i]
     })
-            st.sidebar.error(f"⚠️ Voltage sag detected: {voltage:.2f} V")
 
 # Grid stats
 total_power = sum(ld["Power (W)"] for ld in load_data)
