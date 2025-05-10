@@ -96,6 +96,7 @@ fig, ax = plt.subplots(figsize=(10, 4))
 ax.bar(df["Inverter"], df["Power (W)"], label="Power (W)", color='steelblue')
 ax.set_ylabel("Power (W)")
 ax.set_title("Power Output per Inverter")
+ax.set_ylim(0, 2000)
 st.pyplot(fig)
 
 # Warnings
