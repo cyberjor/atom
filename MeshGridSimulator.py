@@ -121,7 +121,7 @@ for i in range(N):
             # Determine leader direction: -1 (left) if leader is left of segment, +1 (right) otherwise
             lead_dir = -1 if leader_idx <= i else 1
             # Arrow points from surplus node toward leader
-            direction = lead_dir if surplus > 0 else -lead_dir
+            direction = -lead_dir if surplus > 0 else lead_dir
             ax.annotate('',
                         xy=(mid + 0.3 * direction, 0.34),
                         xytext=(mid - 0.3 * direction, 0.34),
@@ -136,3 +136,4 @@ st.pyplot(fig)
 # ----- Warnings -----
 if leader_v<V_NOM:
     st.warning("Leader voltage sagging – press ⏭ Step to redistribute load.")
+
