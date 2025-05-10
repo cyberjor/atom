@@ -110,23 +110,31 @@ for idx, d in enumerate(load_data):
         ax.text(x, -0.05, "Leader", ha='center', va='top', fontsize=8, weight='bold', color='gold')
 
 # Draw lines, voltage drop & arrows
-for i in range(num_inverters-1):
-    x0, x1 = i*2, (i+1)*2
-    mid_x = (x0+x1)/2
-    ax.plot([x0,x1],[0.33,0.33], color='gray', ls='--')
+for i in range(num_inverters - 1):
+    x0, x1 = i * 2, (i + 1) * 2
+    mid_x = (x0 + x1) / 2
+    ax.plot([x0, x1], [0.33, 0.33], color='gray', ls='--')
 
+    # Net surplus (positive) or deficit (negative) at each node
     p0_net = load_data[i]["P_out"] - load_data[i]["P_load"]
-    p1_net = load_data[i+1]["P_out"] - load_data[i+1]["P_load"]
-    flow = p0_net - p1_net  # +ve: i→i+1
-    v_drop = abs(flow / V_NOMINAL) * R_LINE
-    ax.text(mid_x, 0.36, f"{v_drop:.2f} V", ha='center', fontsize=8, color='red')
+    p1_net = load_data[i + 1]["P_out"] - load_data[i + 1]["P_load"]
 
-    if abs(flow) > 1:
-        direction = 1 if flow > 0 else -1
-        ax.annotate('', xy=(mid_x+0.3*direction,0.34), xytext=(mid_x-0.3*direction,0.34),
+    # Only show flow when the two nodes have opposite signs (surplus → deficit)
+    if p0_net * p1_net < 0:  # opposite signs ⇒ real transfer
+        # magnitude of power actually transferred = min(|surplus|, |deficit|)
+        flow_power = min(abs(p0_net), abs(p1_net))
+        current_flow = flow_power / V_NOMINAL
+        v_drop = current_flow * R_LINE
+        ax.text(mid_x, 0.36, f"{v_drop:.2f} V", ha='center', fontsize=8, color='red')
+
+        direction = 1 if p0_net > 0 else -1  # arrow from surplus to deficit
+        ax.annotate('', xy=(mid_x + 0.3 * direction, 0.34), xytext=(mid_x - 0.3 * direction, 0.34),
                     arrowprops=dict(arrowstyle='->', color='green', lw=1.5))
+    else:
+        # no meaningful transfer → no arrow, zero drop label
+        ax.text(mid_x, 0.36, "0.00 V", ha='center', fontsize=8, color='gray')
 
-ax.set_xlim(-1, 2*num_inverters)
+ax.set_xlim(-1, 2 * num_inverters)(-1, 2*num_inverters)
 ax.set_ylim(-0.1, 1)
 ax.axis('off')
 st.pyplot(fig)
