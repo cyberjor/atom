@@ -112,21 +112,20 @@ for i in range(N):
         ax.plot([x, x+2], [0.33, 0.33], color='gray', ls='--')
         mid = (x + x + 2) / 2
 
-        # Voltage drop on this segment
-        ax.text(mid, 0.36, f"{seg_drop[i]:.2f} V", ha='center', fontsize=8, color='red')
+        # cumulative surplus left of the segment (0..i)
+        cum_surplus = sum(p_out[:i+1]) - sum(st.session_state.base_load[:i+1])
+        line_I = cum_surplus / V_NOM if V_NOM else 0
+        v_drop = abs(line_I) * R_LINE
+        ax.text(mid, 0.36, f"{v_drop:.2f} V", ha='center', fontsize=8, color='red')
 
-        # Draw arrow **toward the leader** when there is non‑zero surplus/deficit
-        if abs(seg_drop[i]) > 1e-3:
-            surplus = p_out[i] - st.session_state.base_load[i]
-            # Determine leader direction: -1 (left) if leader is left of segment, +1 (right) otherwise
-            lead_dir = -1 if leader_idx <= i else 1
-            # Arrow points from surplus node toward leader
-            direction = -lead_dir if surplus > 0 else lead_dir
+        # Arrow only if significant current
+        if abs(line_I) > 1e-3:
+            direction = -1 if line_I < 0 else 1  # negative current → arrow left
             ax.annotate('',
                         xy=(mid + 0.3 * direction, 0.34),
                         xytext=(mid - 0.3 * direction, 0.34),
                         arrowprops=dict(arrowstyle='->', color='green'))
-        cum_drop += seg_drop[i]
+        cum_drop += v_drop
 
 ax.set_xlim(-1,2*N)
 ax.set_ylim(-0.1,1.3)
