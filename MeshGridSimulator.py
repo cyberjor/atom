@@ -22,13 +22,14 @@ leader_idx = SIDE.selectbox("Leader (grid‑forming) inverter", range(N), format
 STEP_W = 100  # W per step to redistribute
 
 # ------------------ Constants ------------------
-V_NOM = 230
-CAP = 2000  # W
-V_MIN = 100
-WARN = 225
-R_PER_KM = 1.0  # Ω / km
-DIST_M = 300
-R_LINE = DIST_M/1000 * R_PER_KM  # Ω per segment
+V_NOM = 230          # nominal grid voltage (V)
+F_NOM = 60.0         # nominal frequency (Hz)
+CAP    = 2000        # per‑inverter power capacity (W)
+V_MIN  = 100         # hard minimum voltage (V)
+WARN   = 225         # warning threshold (V)
+R_PER_KM = 1.0       # line resistance (Ω/km)
+DIST_M   = 300       # distance between poles (m)
+R_LINE   = (DIST_M/1000) * R_PER_KM  # Ω per segment DIST_M/1000 * R_PER_KM  # Ω per segment
 
 # ------------------ Helper ------------------
 
@@ -100,52 +101,3 @@ for i in range(N):
         seg_drop = abs(seg_I)*R_LINE
         seg_drops.append(seg_drop)
         cum_drop += seg_drop
-
-# last segment list length N-1
-# ------------------ Metrics ------------------
-TOT_P = sum(p_out)
-shift = max(0,(TOT_P - N*CAP)/1000*0.5)
-
-col1,col2,col3 = st.columns(3)
-col1.metric("Total Output (W)", f"{TOT_P:.0f}")
-col2.metric("Leader V (V)", f"{leader_v:.1f}")
-col3.metric("Freq (Hz)", f"{F_NOM - shift:.2f}")
-
-# ------------------ Plot ------------------
-fig, ax = plt.subplots(figsize=(12,3.5))
-
-cum_drop=0.0
-for i in range(N):
-    x=i*2
-    v_node=leader_v - cum_drop
-    # pole
-    ax.plot([x,x],[0,0.3],color='black')
-    ax.plot([x-0.05,x+0.05],[0.3,0.33],color='black')
-    ax.text(x,0.35,f"Inv {i+1}",ha='center',weight='bold')
-    ax.text(x,0.52,f"{v_node:.0f} V",ha='center',fontsize=8,color='purple')
-    ax.bar(x-0.2, st.session_state.base_load[i]/10000, 0.15, bottom=0.6,color='orange')
-    ax.bar(x+0.05,p_out[i]/10000,0.15,bottom=0.6,color='steelblue')
-    if i==leader_idx:
-        ax.text(x,-0.05,"Leader",ha='center',va='top',fontsize=8,color='gold')
-    # draw line to next
-    if i<N-1:
-        ax.plot([x,x+2],[0.33,0.33],color='gray',ls='--')
-        vdrop=seg_drops[i]
-        mid=(x+x+2)/2
-        ax.text(mid,0.36,f"{vdrop:.2f} V",ha='center',fontsize=8,color='red')
-        if abs(vdrop)>0.01:
-            dir_sign = 1 if p_out[i]>st.session_state.base_load[i] else -1
-            ax.annotate('',xy=(mid+0.3*dir_sign,0.34),xytext=(mid-0.3*dir_sign,0.34),
-                        arrowprops=dict(arrowstyle='->',color='green'))
-        cum_drop+=vdrop
-
-ax.set_xlim(-1,2*N)
-ax.set_ylim(-0.1,1.3)
-ax.axis('off')
-
-st.pyplot(fig)
-
-# ------------------ Warnings ------------------
-if leader_v<V_NOM:
-    st.warning("Leader voltage sagging – redistribute load via ⏭ Step.")
-
