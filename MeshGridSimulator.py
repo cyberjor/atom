@@ -4,10 +4,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Title
-st.title("Mesh Grid Current Simulation")
+st.title("Mesh Grid Power and Current Simulation")
 
 # Inverter settings
-st.sidebar.header("Inverter Current Settings")
+st.sidebar.header("Inverter Power Settings")
 
 # Number of inverters
 num_inverters = st.sidebar.slider("Number of Inverters", min_value=2, max_value=10, value=4)
@@ -22,25 +22,27 @@ I_MAX_CONTINUOUS = 8.0  # max continuous current in A
 V_MIN = 180  # minimum voltage allowed for sagging calculation
 
 # Voltage sag function
-def calculate_voltage(current):
+def calculate_voltage_from_power(power):
+    voltage = V_NOMINAL
+    current = power / voltage
     if current <= I_MAX_CONTINUOUS:
-        return V_NOMINAL
+        return voltage, current
     else:
-        power_limit = INVERTER_CAPACITY  # W
-        voltage = power_limit / current
-        return max(voltage, V_MIN)
+        voltage = max(INVERTER_CAPACITY / current, V_MIN)
+        current = power / voltage
+        return voltage, current
 
 for i in range(num_inverters):
-    with st.sidebar.expander(f"Inverter {i+1} Current"):
-        current = st.slider("Local Current (A)", 0.0, 10.0, 4.0, step=0.1, key=f"current_{i}")
-        voltage = calculate_voltage(current)
-        power = current * voltage
+    with st.sidebar.expander(f"Inverter {i+1} Settings"):
+        power = st.slider("Power Draw (W)", 0, 2500, 1000, step=50, key=f"power_{i}")
+        voltage, current = calculate_voltage_from_power(power)
         load_data.append({
             "Inverter": f"Inv {i+1}",
-            "Current (A)": current,
+            "Power (W)": power,
             "Voltage (V)": voltage,
-            "Power (W)": power
+            "Current (A)": current
         })
+        st.markdown(f"**Current Output:** {current:.2f} A")
 
 # Compute total system performance
 total_power = sum(ld["Power (W)"] for ld in load_data)
@@ -66,3 +68,4 @@ if frequency_shift > 0:
     st.warning("System is overloaded — frequency drop may cause instability!")
 if any(ld["Voltage (V)"] < V_NOMINAL for ld in load_data):
     st.warning("One or more inverters are voltage sagging to meet power limits!")
+
