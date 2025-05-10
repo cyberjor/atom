@@ -59,17 +59,14 @@ def inv_terminal(I_req: float, I_need: float, v_up: float):
 
 
 def solve(req_I):
-    """Two‑pass power‑flow solve with leader‑voltage recovery.
-
-    Pass 1  – assume leader supplies its requested current; propagate → right.
-    Pass 2  – compute **effective** leader current after followers’ contribution and
-               re‑compute node voltages & drops with updated leader voltage.
+    """Two‑pass solve where leader voltage is recalculated using
+    net current after right‑hand contributions.
     """
-    # ---- pass 1 ----
     def forward(v_leader):
         I_sup, P_sup, V_node, drop_seg = [], [], [], []
         cum_drop = 0.0
         surplus_P = 0.0
+        leader_surplus = None  # surplus right after leader node computed
         for i in range(N):
             v_up = v_leader - cum_drop
             rem_P = max(state.load_W[i] - surplus_P, 0.0)
@@ -77,31 +74,33 @@ def solve(req_I):
             I_out, P_out, v_node = inv_terminal(req_I[i], I_need, v_up)
             I_sup.append(I_out); P_sup.append(P_out); V_node.append(v_node)
             surplus_P += P_out - state.load_W[i]
+            if i == 0:
+                leader_surplus = surplus_P  # capture immediately after leader
             if i < N-1:
                 line_I = surplus_P / v_node if v_node else 0.0
                 v_d = abs(line_I) * R_LINE
                 drop_seg.append(v_d)
                 cum_drop += v_d
-        return I_sup, P_sup, V_node, drop_seg, surplus_P
+        return I_sup, P_sup, V_node, drop_seg, leader_surplus
 
-    # first assumption: leader voltage droops based on its own request
+    # initial leader voltage based on its requested current alone
     leader_I_req = req_I[leader_idx]
-    v_leader = V_NOM if leader_I_req <= I_MAX else max(CAP_W / leader_I_req, MIN_V)
-    I1, P1, V1, drop1, surplus_tail = forward(v_leader)
+    v_leader_initial = V_NOM if leader_I_req <= I_MAX else max(CAP_W / leader_I_req, MIN_V)
 
-    # power arriving at leader from followers (negative surplus at node 0 left side)
-    imported_P = max(- (P1[0] - state.load_W[0]), 0.0)
-    eff_I_leader = (state.load_W[0] - imported_P) / V_NOM
+    I1, P1, V1, drop1, leader_surplus1 = forward(v_leader_initial)
 
-    # recompute leader voltage with effective current
-    v_leader_new = V_NOM if eff_I_leader <= I_MAX else max(CAP_W / eff_I_leader, MIN_V)
+    # power imported to leader from followers (negative surplus means import)
+    imported_P = max(-leader_surplus1, 0.0)
+    eff_leader_I = max((state.load_W[0] - imported_P) / V_NOM, 0.0)
 
-    if abs(v_leader_new - v_leader) < 1e-3:
-        return v_leader_new, I1, P1, V1, drop1
+    v_leader_recovered = V_NOM if eff_leader_I <= I_MAX else max(CAP_W / eff_leader_I, MIN_V)
 
-    # ---- pass 2 with recovered leader voltage ----
-    I2, P2, V2, drop2, _ = forward(v_leader_new)
-    return v_leader_new, I2, P2, V2, drop2
+    # if voltage changed appreciably, propagate again
+    if abs(v_leader_recovered - v_leader_initial) > 1e-3:
+        I2, P2, V2, drop2, _ = forward(v_leader_recovered)
+        return v_leader_recovered, I2, P2, V2, drop2
+    else:
+        return v_leader_initial, I1, P1, V1, drop1
 
 # ───────── Sidebar sliders ─────────
 SIDE.subheader("Loads & Currents")
