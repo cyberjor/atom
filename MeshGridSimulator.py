@@ -107,15 +107,26 @@ for i in range(N):
     ax.bar(x+0.05,p_out[i]/10000,0.15,bottom=0.6,color='steelblue')
     if i==leader_idx:
         ax.text(x,-0.05,"Leader",ha='center',va='top',fontsize=8,color='gold')
-    # line
-    if i<N-1:
-        ax.plot([x,x+2],[0.33,0.33],color='gray',ls='--')
-        mid=(x+x+2)/2
-        ax.text(mid,0.36,f"{seg_drop[i]:.2f} V",ha='center',fontsize=8,color='red')
-        if abs(seg_drop[i])>1e-3:
-            direction=1 if p_out[i]>st.session_state.base_load[i] else -1
-            ax.annotate('',xy=(mid+0.3*direction,0.34),xytext=(mid-0.3*direction,0.34),arrowprops=dict(arrowstyle='->',color='green'))
-        cum_drop+=seg_drop[i]
+    # line (between i and i+1)
+    if i < N-1:
+        ax.plot([x, x+2], [0.33, 0.33], color='gray', ls='--')
+        mid = (x + x + 2) / 2
+
+        # Voltage drop on this segment
+        ax.text(mid, 0.36, f"{seg_drop[i]:.2f} V", ha='center', fontsize=8, color='red')
+
+        # Draw arrow **toward the leader** when there is non‑zero surplus/deficit
+        if abs(seg_drop[i]) > 1e-3:
+            surplus = p_out[i] - st.session_state.base_load[i]
+            # Determine leader direction: -1 (left) if leader is left of segment, +1 (right) otherwise
+            lead_dir = -1 if leader_idx <= i else 1
+            # Arrow points from surplus node toward leader
+            direction = lead_dir if surplus > 0 else -lead_dir
+            ax.annotate('',
+                        xy=(mid + 0.3 * direction, 0.34),
+                        xytext=(mid - 0.3 * direction, 0.34),
+                        arrowprops=dict(arrowstyle='->', color='green'))
+        cum_drop += seg_drop[i]
 
 ax.set_xlim(-1,2*N)
 ax.set_ylim(-0.1,1.3)
