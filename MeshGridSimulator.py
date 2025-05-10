@@ -136,7 +136,7 @@ for i in range(num_inverters - 1):
             arrowprops=dict(arrowstyle='->', color='green', lw=1.5)
         )
 
-ax.set_xlim(-1, 2 * num_inverters)(-1, 2 * num_inverters)
+ax.set_xlim(-1, 2 * num_inverters)
 ax.set_ylim(-0.1, 1)
 ax.axis('off')
 st.pyplot(fig)
@@ -146,3 +146,4 @@ if frequency_shift > 0:
     st.warning("System is overloaded — frequency drop may cause instability!")
 if any(ld["Voltage (V)"] < V_NOMINAL for ld in load_data):
     st.warning("One or more inverters are voltage sagging to meet power limits!")
+
