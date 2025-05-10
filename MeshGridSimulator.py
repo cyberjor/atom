@@ -3,101 +3,125 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 """
-Mesh‑Grid Inverter Simulator (time‑step version)
-
-• Sliders set the **local load** (W) each inverter must supply.
-• The grid‑forming leader tries to carry its own load; if it overloads (>2 kW)
-  each click of **⏭ Step** transfers 100 W of power from a follower inverter
-  (with spare margin) toward the leader until equilibrium.
-• Every inverter sees the leader voltage minus cumulative line‑drop.
-  Voltage labels & line‑drop values update every step.
+Mesh‑Grid Inverter Simulator (time‑step)
+• Sliders: local load per inverter (W)
+• ⏭ Step: shifts 100 W at a time from a donor (with spare margin) to the overloaded leader until ≤2 kW
+• Each inverter sees leader voltage minus cumulative line‑drop (1 Ω/km, 300 m span)
+• Visual shows poles, loads (orange), inverter output (blue), voltage at each node, line drops and flow arrow
 """
 
-# ------------------ UI ------------------
+# ----- UI -----
 st.title("Mesh Grid Time‑Step Simulator")
 SIDE = st.sidebar
 SIDE.header("Configuration")
 N = SIDE.slider("Number of Inverters", 2, 10, 4, key="n_inv")
-leader_idx = SIDE.selectbox("Leader (grid‑forming) inverter", range(N), format_func=lambda i: f"Inv {i+1}")
-STEP_W = 100  # W per step to redistribute
+leader_idx = SIDE.selectbox("Leader (grid-forming) inverter", range(N), format_func=lambda i: f"Inv {i+1}")
+STEP_W = 100  # redistribution quantum
 
-# ------------------ Constants ------------------
-V_NOM = 230          # nominal grid voltage (V)
-F_NOM = 60.0         # nominal frequency (Hz)
-CAP    = 2000        # per‑inverter power capacity (W)
-V_MIN  = 100         # hard minimum voltage (V)
-WARN   = 225         # warning threshold (V)
-R_PER_KM = 1.0       # line resistance (Ω/km)
-DIST_M   = 300       # distance between poles (m)
-R_LINE   = (DIST_M/1000) * R_PER_KM  # Ω per segment DIST_M/1000 * R_PER_KM  # Ω per segment
+# ----- Constants -----
+V_NOM = 230
+F_NOM = 60.0
+CAP   = 2000
+V_MIN = 100
+WARN  = 225
+R_LINE = 0.3        # Ω per 300 m segment (1 Ω/km)
 
-# ------------------ Helper ------------------
-
-def inv_model(p_req, v_grid):
-    """Given requested power & grid voltage, return (p_out, current)."""
-    p_out = min(p_req, CAP)
-    i_out = p_out / v_grid if v_grid else 0
-    return p_out, i_out
-
-# ------------------ Session State Init ------------------
+# ----- Session init -----
 if "base_load" not in st.session_state:
     st.session_state.base_load = [0.0]*N
     st.session_state.adj_power = [0.0]*N
 
-# Reset adjusted powers if user changed sliders or N
 if len(st.session_state.base_load)!=N:
     st.session_state.base_load = [0.0]*N
     st.session_state.adj_power = [0.0]*N
 
-# Collect sliders
-SIDE.subheader("Loads (W)")
-changed = False
+# ----- Load sliders -----
+SIDE.subheader("Local Loads (W)")
+changed=False
 for i in range(N):
-    val = SIDE.slider(f"Inv {i+1} load", 0.0, 3000.0, st.session_state.base_load[i], 50.0, key=f"load_{i}")
+    val=SIDE.slider(f"Inv {i+1}",0.0,3000.0,st.session_state.base_load[i],50.0,key=f"load_{i}")
     if val!=st.session_state.base_load[i]:
         changed=True
         st.session_state.base_load[i]=val
 
-# If loads changed: reset adjusted powers to requested
 if changed:
     st.session_state.adj_power = st.session_state.base_load.copy()
 
-# ------------------ Time‑step button ------------------
+# ----- Step Button -----
 if st.button("⏭ Step"):
-    # One redistribution step of 100 W from a follower (with margin) to the leader if overloaded
     leader_p = st.session_state.adj_power[leader_idx]
-    if leader_p > CAP:  # need relief
-        deficit = min(leader_p-CAP, STEP_W)
-        # find follower with max spare margin
-        margins = [(i, CAP-st.session_state.adj_power[i]) for i in range(N) if i!=leader_idx]
-        margins = [m for m in margins if m[1]>0]
+    if leader_p>CAP:
+        deficit=min(leader_p-CAP,STEP_W)
+        margins=[(i,CAP-st.session_state.adj_power[i]) for i in range(N) if i!=leader_idx and CAP-st.session_state.adj_power[i]>0]
         if margins:
-            donor = max(margins, key=lambda m: m[1])[0]
-            give = min(deficit, margins[margins.index((donor, CAP-st.session_state.adj_power[donor]))][1])
-            st.session_state.adj_power[donor] += give
-            st.session_state.adj_power[leader_idx]   -= give
+            donor=max(margins,key=lambda m:m[1])[0]
+            give=min(deficit, CAP-st.session_state.adj_power[donor])
+            st.session_state.adj_power[donor]+=give
+            st.session_state.adj_power[leader_idx]-=give
 
-# ------------------ Solve grid ------------------
-# First, compute leader voltage (may sag if still >CAP)
-leader_p = st.session_state.adj_power[leader_idx]
-leader_v = V_NOM if leader_p<=CAP else max(CAP*(1)/leader_p*V_NOM, V_MIN)
+# ----- Electrical model -----
 
-p_out = []
-current = []
-seg_drops = []  # voltage drop per line
-cum_drop = 0.0
+def inv_model(p_req,v):
+    p_out=min(p_req,CAP)
+    i_out=p_out/v if v else 0
+    return p_out,i_out
+
+leader_p=st.session_state.adj_power[leader_idx]
+leader_v=V_NOM if leader_p<=CAP else max(CAP/leader_p*V_NOM,V_MIN)
+
+p_out=[]; currents=[]; node_V=[]; seg_drop=[]
+cum_drop=0
 for i in range(N):
-    # sensed grid voltage at node i
-    v_node = leader_v - cum_drop
-    # inverter output power & current
-    p_i, i_i = inv_model(st.session_state.adj_power[i], v_node)
-    p_out.append(p_i)
-    current.append(i_i)
-    # compute current through line i->i+1 (positive away from leader)
+    v_node=leader_v-cum_drop
+    node_V.append(v_node)
+    p,i_out=inv_model(st.session_state.adj_power[i],v_node)
+    p_out.append(p); currents.append(i_out)
     if i<N-1:
-        # net surplus at node i
-        surplus = p_out[i]-st.session_state.base_load[i]
-        seg_I = surplus / v_node
-        seg_drop = abs(seg_I)*R_LINE
-        seg_drops.append(seg_drop)
-        cum_drop += seg_drop
+        surplus=p_out[i]-st.session_state.base_load[i]
+        line_I=surplus/v_node
+        drop=abs(line_I)*R_LINE
+        seg_drop.append(drop)
+        cum_drop+=drop
+
+# ----- Metrics -----
+TOT=np.sum(p_out)
+shift=max(0,(TOT-N*CAP)/1000*0.5)
+col1,col2,col3=st.columns(3)
+col1.metric("Total Power (W)",f"{TOT:.0f}")
+col2.metric("Leader V (V)",f"{leader_v:.1f}")
+col3.metric("Freq (Hz)",f"{F_NOM-shift:.2f}")
+
+# ----- Plot -----
+fig,ax=plt.subplots(figsize=(12,3.5))
+
+cum_drop=0
+for i in range(N):
+    x=i*2
+    # Poles & labels
+    ax.plot([x,x],[0,0.3],color='black')
+    ax.plot([x-0.05,x+0.05],[0.3,0.33],color='black')
+    ax.text(x,0.35,f"Inv {i+1}",ha='center',weight='bold')
+    ax.text(x,0.52,f"{node_V[i]:.0f} V",ha='center',fontsize=8,color='purple')
+    # bars
+    ax.bar(x-0.2, st.session_state.base_load[i]/10000,0.15,bottom=0.6,color='orange')
+    ax.bar(x+0.05,p_out[i]/10000,0.15,bottom=0.6,color='steelblue')
+    if i==leader_idx:
+        ax.text(x,-0.05,"Leader",ha='center',va='top',fontsize=8,color='gold')
+    # line
+    if i<N-1:
+        ax.plot([x,x+2],[0.33,0.33],color='gray',ls='--')
+        mid=(x+x+2)/2
+        ax.text(mid,0.36,f"{seg_drop[i]:.2f} V",ha='center',fontsize=8,color='red')
+        if abs(seg_drop[i])>1e-3:
+            direction=1 if p_out[i]>st.session_state.base_load[i] else -1
+            ax.annotate('',xy=(mid+0.3*direction,0.34),xytext=(mid-0.3*direction,0.34),arrowprops=dict(arrowstyle='->',color='green'))
+        cum_drop+=seg_drop[i]
+
+ax.set_xlim(-1,2*N)
+ax.set_ylim(-0.1,1.3)
+ax.axis('off')
+st.pyplot(fig)
+
+# ----- Warnings -----
+if leader_v<V_NOM:
+    st.warning("Leader voltage sagging – press ⏭ Step to redistribute load.")
