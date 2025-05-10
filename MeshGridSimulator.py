@@ -41,15 +41,17 @@ def calculate_voltage_from_power(power):
     return voltage, current, min(power, INVERTER_CAPACITY)
 
 # Step 1: Collect manual power input
+output_placeholders = []  # placeholders to update after adjustment
 for i in range(num_inverters):
     with st.sidebar.expander(f"Inverter {i+1} Settings"):
         power = st.slider("Power Draw (W)", 0.0, 3000.0, 1000.0, step=50.0, key=f"power_{i}")
         manual_powers.append(power)
-        # Calculate and display actual inverter output
-        voltage, current, actual_power = calculate_voltage_from_power(power)
-        st.markdown(f"**Inverter Power Output:** {actual_power:.2f} W")
+        voltage, current, _ = calculate_voltage_from_power(power)
         if voltage < V_WARNING:
             st.error(f"⚠️ Voltage sag detected: {voltage:.2f} V")
+        # placeholder for adjusted power output
+        placeholder = st.empty()
+        output_placeholders.append(placeholder)
 
 # Step 2: Leader logic
 leader_power = manual_powers[leader_index]
@@ -83,21 +85,11 @@ for i in range(num_inverters):
         "Power (W)": actual_power,
         "Local Load (W)": manual_powers[i]
     })
+    # update the placeholder with adjusted output
+    output_placeholders[i].markdown(f"**Inverter Power Output:** {actual_power:.2f} W")
 
 # Grid stats
-total_power = sum(ld["Power (W)"] for ld in load_data)
-grid_voltage = load_data[leader_index]["Voltage (V)"] if load_data else V_NOMINAL
-frequency_shift = max(0, (total_power - num_inverters * INVERTER_CAPACITY) / 1000 * 0.5)
-
-# Results
-st.subheader("Grid State")
-st.metric("Total Power (W)", f"{total_power:.0f}")
-st.metric("Grid Voltage (V)", f"{grid_voltage:.2f}")
-st.metric("Grid Frequency (Hz)", f"{F_NOMINAL - frequency_shift:.2f}")
-
-# Visualize mesh grid
-st.subheader("Mesh Grid Visualization")
-fig, ax = plt.subplots(figsize=(12, 3.5))
+(figsize=(12, 3.5))
 
 for i, ld in enumerate(load_data):
     x = i * 2
