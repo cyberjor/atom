@@ -4,10 +4,10 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 # Title
-st.title("Mesh Grid Power and Current Simulation")
+st.title("Mesh Grid Current and Power Simulation")
 
 # Inverter settings
-st.sidebar.header("Inverter Power Settings")
+st.sidebar.header("Inverter Current Settings")
 
 # Number of inverters
 num_inverters = st.sidebar.slider("Number of Inverters", min_value=2, max_value=10, value=4)
@@ -19,30 +19,33 @@ V_NOMINAL = 230  # nominal voltage
 F_NOMINAL = 60.0  # nominal frequency
 INVERTER_CAPACITY = 2000  # 2 kW per inverter
 I_MAX_CONTINUOUS = 8.0  # max continuous current in A
-V_MIN = 180  # minimum voltage allowed for sagging calculation
+I_MAX_INPUT = 15.0  # max current input via slider
+V_MIN = 100  # minimum voltage allowed for sagging calculation
+V_WARNING = 225  # threshold for voltage sag warning
 
-# Voltage sag function
-def calculate_voltage_from_power(power):
-    voltage = V_NOMINAL
-    current = power / voltage
-    if current <= I_MAX_CONTINUOUS:
-        return voltage, current
+# Voltage sag function based on current draw
+def calculate_voltage_from_current(current):
+    power = current * V_NOMINAL
+    if power <= INVERTER_CAPACITY:
+        voltage = V_NOMINAL
     else:
         voltage = max(INVERTER_CAPACITY / current, V_MIN)
-        current = power / voltage
-        return voltage, current
+        power = voltage * current
+    return voltage, min(power, INVERTER_CAPACITY)
 
 for i in range(num_inverters):
     with st.sidebar.expander(f"Inverter {i+1} Settings"):
-        power = st.slider("Power Draw (W)", 0, 2500, 1000, step=50, key=f"power_{i}")
-        voltage, current = calculate_voltage_from_power(power)
+        current = st.slider("Current Draw (A)", 0.0, I_MAX_INPUT, 4.0, step=0.1, key=f"current_{i}")
+        voltage, power = calculate_voltage_from_current(current)
         load_data.append({
             "Inverter": f"Inv {i+1}",
-            "Power (W)": power,
+            "Current (A)": current,
             "Voltage (V)": voltage,
-            "Current (A)": current
+            "Power (W)": power
         })
-        st.markdown(f"**Current Output:** {current:.2f} A")
+        st.markdown(f"**Power Output:** {power:.2f} W")
+        if voltage < V_WARNING:
+            st.error(f"⚠️ Voltage sag detected: {voltage:.2f} V")
 
 # Compute total system performance
 total_power = sum(ld["Power (W)"] for ld in load_data)
@@ -68,4 +71,3 @@ if frequency_shift > 0:
     st.warning("System is overloaded — frequency drop may cause instability!")
 if any(ld["Voltage (V)"] < V_NOMINAL for ld in load_data):
     st.warning("One or more inverters are voltage sagging to meet power limits!")
-
