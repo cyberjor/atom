@@ -45,6 +45,11 @@ for i in range(num_inverters):
     with st.sidebar.expander(f"Inverter {i+1} Settings"):
         power = st.slider("Power Draw (W)", 0.0, 3000.0, 1000.0, step=50.0, key=f"power_{i}")
         manual_powers.append(power)
+        # Calculate and display actual inverter output
+        voltage, current, actual_power = calculate_voltage_from_power(power)
+        st.markdown(f"**Inverter Power Output:** {actual_power:.2f} W")
+        if voltage < V_WARNING:
+            st.error(f"⚠️ Voltage sag detected: {voltage:.2f} V")
 
 # Step 2: Leader logic
 leader_power = manual_powers[leader_index]
@@ -78,9 +83,7 @@ for i in range(num_inverters):
         "Power (W)": actual_power,
         "Local Load (W)": manual_powers[i]
     })
-    st.sidebar.markdown(f"**Inverter {i+1} Power Output:** {actual_power:.2f} W")
-    if voltage < V_WARNING:
-        st.sidebar.error(f"⚠️ Voltage sag detected: {voltage:.2f} V")
+            st.sidebar.error(f"⚠️ Voltage sag detected: {voltage:.2f} V")
 
 # Grid stats
 total_power = sum(ld["Power (W)"] for ld in load_data)
@@ -131,3 +134,4 @@ if frequency_shift > 0:
     st.warning("System is overloaded — frequency drop may cause instability!")
 if any(ld["Voltage (V)"] < V_NOMINAL for ld in load_data):
     st.warning("One or more inverters are voltage sagging to meet power limits!")
+
