@@ -42,16 +42,19 @@ if len(state.load_W)!=N:
 
 # ───────── Helper ─────────
 
-def inv_terminal(I_req: float, v_up: float):
-    """Return (I_out, P_out, v_term)."""
-    if I_req <= I_MAX:
-        v = v_up
-        I_out = I_req
-    else:
-        v = max(CAP_W / I_req, MIN_V)
+def inv_terminal(I_req: float, I_need: float, v_up: float):
+    """Return (I_out, P_out, v_term).
+    • Inverter delivers I_out = min(I_req, I_need).
+    • If that I_out > I_MAX → drop voltage so P ≤ 2 kW (v = CAP_W / I_out).
+    • Voltage never exceeds upstream voltage nor goes below MIN_V.
+    """
+    I_out = min(I_req, I_need)
+    if I_out > I_MAX:
+        v = max(CAP_W / I_out, MIN_V)
         v = min(v, v_up)
-        I_out = I_req
-    P_out = min(I_out * v, CAP_W)
+    else:
+        v = v_up
+    P_out = I_out * v
     return I_out, P_out, v
 
 
