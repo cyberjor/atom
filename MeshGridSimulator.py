@@ -112,19 +112,31 @@ for i, ld in enumerate(load_data):
 # Draw lines and voltage drops with arrows
 for i in range(num_inverters - 1):
     x0, x1 = i * 2, (i + 1) * 2
+    mid_x = (x0 + x1) / 2
+
+    # Always plot the line between poles
+    ax.plot([x0, x1], [0.33, 0.33], color='gray', linestyle='--')
+
+    # Net power surplus/deficit at each inverter
     p0_net = load_data[i]["Power (W)"] - load_data[i]["Local Load (W)"]
     p1_net = load_data[i+1]["Power (W)"] - load_data[i+1]["Local Load (W)"]
-    power_flow = p0_net - p1_net
-    if load_data[i]["Power (W)"] > 0 or load_data[i+1]["Power (W)"] > 0:
-        voltage_drop = abs(power_flow / V_NOMINAL) * R_LINE
-        ax.plot([x0, x1], [0.33, 0.33], color='gray', linestyle='--')
-        ax.text((x0 + x1)/2, 0.36, f"{voltage_drop:.2f} V", ha='center', fontsize=8, color='red')
-        if abs(power_flow) > 1:
-            direction = -1 if power_flow > 0 else 1
-            ax.annotate('', xy=(x1 - direction * 0.3, 0.34), xytext=(x1, 0.34),
-                        arrowprops=dict(arrowstyle='->', color='green', lw=1.5))
+    power_flow = p0_net - p1_net  # +ve means flow from i → i+1
 
-ax.set_xlim(-1, 2 * num_inverters)
+    # Voltage drop based on power flow (|I| * R)
+    voltage_drop = abs(power_flow / V_NOMINAL) * R_LINE
+    ax.text(mid_x, 0.36, f"{voltage_drop:.2f} V", ha='center', fontsize=8, color='red')
+
+    # Draw arrow only if significant power transfers (>1 W)
+    if abs(power_flow) > 1:
+        direction = 1 if power_flow > 0 else -1  # 1: i→i+1, -1: i+1→i
+        ax.annotate(
+            '',
+            xy=(mid_x + 0.3 * direction, 0.34),
+            xytext=(mid_x - 0.3 * direction, 0.34),
+            arrowprops=dict(arrowstyle='->', color='green', lw=1.5)
+        )
+
+ax.set_xlim(-1, 2 * num_inverters)(-1, 2 * num_inverters)
 ax.set_ylim(-0.1, 1)
 ax.axis('off')
 st.pyplot(fig)
@@ -134,4 +146,3 @@ if frequency_shift > 0:
     st.warning("System is overloaded — frequency drop may cause instability!")
 if any(ld["Voltage (V)"] < V_NOMINAL for ld in load_data):
     st.warning("One or more inverters are voltage sagging to meet power limits!")
-
