@@ -58,10 +58,10 @@ def solve(load_W, I_local):
     import_I = line_I[0] if line_I else 0.0
     eff_I0 = max(I_local[leader_idx] - import_I, 0.0)
 
-    if eff_I0 * V_NOM > CAP_W:
-        V_leader = max(CAP_W / eff_I0, MIN_V)
-    else:
+    if eff_I0 <= I_MAX:
         V_leader = V_NOM
+    else:
+        V_leader = max(CAP_W / eff_I0, MIN_V)
 
     V_nodes = [0.0] * N
     V_nodes[0] = V_leader
