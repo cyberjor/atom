@@ -48,49 +48,60 @@ if st.button("⏭ Step"):
 # -------------------- Solver --------------------
 def solve(load_W, I_local):
     N = len(load_W)
-    surplus = [I_local[j] - load_W[j] / V_NOM for j in range(N)]
+    # Calculate current demand per inverter
+    I_demand = [load_W[i] / V_NOM for i in range(N)]
+    
+    # Calculate surplus/deficit (positive = overproducing, negative = needing help)
+    surplus = [I_local[i] - I_demand[i] for i in range(N)]
 
-    # Compute cumulative reverse flow from right to left
+    # Calculate line currents from right to left (helper contribution)
     line_I = []
-    cum = 0.0
-    for seg in reversed(range(1, N)):
-        cum += surplus[seg]
-        line_I.insert(0, cum)
+    cumulative = 0.0
+    for i in reversed(range(1, N)):
+        cumulative += surplus[i]
+        line_I.insert(0, cumulative)  # Prepend so line_I[0] is flow to inverter 1
 
-    # Compute effective current needed at leader node
-    import_I = line_I[0] if line_I else 0.0
-    I_eff = max(load_W[0] / V_NOM - import_I, 0.0)
-    P_eff = I_eff * V_NOM
+    # Calculate help arriving to leader
+    help_current = line_I[0] if line_I else 0.0
 
-    # Cap at 2kW
-    if P_eff > CAP_W:
-        I_eff = CAP_W / V_NOM
+    # Determine how much current leader must supply on its own
+    needed_current = I_demand[0] - help_current
+    needed_current = max(0.0, needed_current)
 
-    # Update current for leader
-    st.session_state.I_local[0] = I_eff
+    # Apply power cap for leader
+    if needed_current * V_NOM > CAP_W:
+        needed_current = CAP_W / V_NOM
 
-    # Compute node voltages starting from leader
+    # Assign updated current to leader
+    I_local[0] = needed_current
+
+    # Compute voltages
     V_nodes = [0.0] * N
-    V_leader = V_NOM if I_eff * V_NOM <= CAP_W else max(CAP_W / I_eff, MIN_V)
-    V_nodes[0] = V_leader
     drop_seg = []
 
-    for j in range(1, N):
-        drop = abs(line_I[j - 1]) * R_LINE
-        drop_seg.append(drop)
-        V_nodes[j] = max(V_nodes[j - 1] - drop, MIN_V)
+    # Leader voltage is based on own current and cap
+    if I_local[0] * V_NOM <= CAP_W:
+        V_nodes[0] = V_NOM
+    else:
+        V_nodes[0] = max(CAP_W / I_local[0], MIN_V)
 
-    # Final power outputs and current limiting
+    # Compute voltage at each node based on line current drops
+    for i in range(1, N):
+        drop = abs(line_I[i - 1]) * R_LINE
+        drop_seg.append(drop)
+        V_nodes[i] = max(V_nodes[i - 1] - drop, MIN_V)
+
+    # Recalculate power at each node and re-cap current if power exceeds 2 kW
     P_out = []
-    for j in range(N):
-        I = I_local[j]
-        V = V_nodes[j]
-        P = I * V
+    for i in range(N):
+        V = V_nodes[i]
+        I = I_local[i]
+        P = V * I
         if P > CAP_W:
             I = CAP_W / V
             P = CAP_W
+        I_local[i] = I
         P_out.append(P)
-        st.session_state.I_local[j] = I
 
     return V_nodes, P_out, line_I, drop_seg
 
