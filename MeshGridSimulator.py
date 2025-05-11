@@ -42,7 +42,7 @@ for j in range(N):
 if st.button("⏭ Step"):
     V_now = st.session_state.get("V_nodes", [V_NOM]*N)
     for j in range(N):
-        if V_now[j] < WARN_V and st.session_state.I_local[j] < I_MAX:
+        if V_now[leader_idx] < WARN_V and st.session_state.I_local[j] < I_MAX:
             st.session_state.I_local[j] = min(st.session_state.I_local[j] + STEP_I, I_MAX)
 
 # -------------------- Solver --------------------
@@ -60,8 +60,11 @@ def solve(load_W, I_local):
     I_local[leader_idx] = eff_I0
     st.session_state.I_local[leader_idx] = eff_I0
 
-    V_nodes = [V_NOM] * N
+    # Apply leader voltage droop
+    V_leader = V_NOM if eff_I0 * V_NOM <= CAP_W else max(CAP_W / eff_I0, MIN_V)
+    V_nodes = [V_leader] + [0.0] * (N - 1)
     drop_seg = []
+
     for j in range(1, N):
         drop = abs(line_I[j - 1]) * R_LINE
         drop_seg.append(drop)
