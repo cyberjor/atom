@@ -31,14 +31,17 @@ if "load_W" not in st.session_state or len(st.session_state.load_W) != N:
 # -------------------- Input Sliders for Loads --------------------
 # For each inverter, allow setting the local load and display its current demand and supply
 for j in range(N):
-    st.sidebar.markdown(f"### Inverter {j+1}")
-    st.session_state.load_W[j] = st.sidebar.slider(
-        f"Local load (W)", 0.0, 3000.0, st.session_state.load_W[j],
-        key=f"load_{j}", step=50.0
-    )
-    I_demand = st.session_state.load_W[j] / V_NOM
-    st.sidebar.caption(f"Current demand: **{I_demand:.2f} A**")
-    st.sidebar.caption(f"Current supplied: **{st.session_state.I_local[j]:.2f} A**")
+
+st.sidebar.markdown(f"### Inverter {j+1}")
+st.session_state.load_W[j] = st.sidebar.slider(
+    "Local load (W)", 0.0, 3000.0, st.session_state.load_W[j],
+    key=f"load_{j}", step=50.0
+)
+I_demand = st.session_state.load_W[j] / V_NOM
+st.sidebar.caption(f"Current demand: **{I_demand:.2f} A**")
+st.sidebar.caption(f"Current supplied: **{st.session_state.I_local[j]:.2f} A**")
+P_node = st.session_state.I_local[j] * V_NOM
+st.sidebar.caption(f"Power output: **{P_node:.0f} W**")
 
 # -------------------- Initial Current Match --------------------
 # Set the inverter's initial output current to match the demand
