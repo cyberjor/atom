@@ -47,22 +47,32 @@ if st.button("⏭ Step"):
 
 # -------------------- Solver --------------------
 def solve(load_W, I_local):
+    N = len(load_W)
     surplus = [I_local[j] - load_W[j] / V_NOM for j in range(N)]
 
+    # Compute cumulative reverse flow from right to left
     line_I = []
     cum = 0.0
     for seg in reversed(range(1, N)):
         cum += surplus[seg]
         line_I.insert(0, cum)
 
+    # Compute effective current needed at leader node
     import_I = line_I[0] if line_I else 0.0
-    eff_I0 = max(I_local[leader_idx] - import_I, 0.0)
-    I_local[leader_idx] = eff_I0
-    st.session_state.I_local[leader_idx] = eff_I0
+    I_eff = max(load_W[0] / V_NOM - import_I, 0.0)
+    P_eff = I_eff * V_NOM
 
-    # Apply leader voltage droop
-    V_leader = V_NOM if eff_I0 * V_NOM <= CAP_W else max(CAP_W / eff_I0, MIN_V)
-    V_nodes = [V_leader] + [0.0] * (N - 1)
+    # Cap at 2kW
+    if P_eff > CAP_W:
+        I_eff = CAP_W / V_NOM
+
+    # Update current for leader
+    st.session_state.I_local[0] = I_eff
+
+    # Compute node voltages starting from leader
+    V_nodes = [0.0] * N
+    V_leader = V_NOM if I_eff * V_NOM <= CAP_W else max(CAP_W / I_eff, MIN_V)
+    V_nodes[0] = V_leader
     drop_seg = []
 
     for j in range(1, N):
@@ -70,6 +80,7 @@ def solve(load_W, I_local):
         drop_seg.append(drop)
         V_nodes[j] = max(V_nodes[j - 1] - drop, MIN_V)
 
+    # Final power outputs and current limiting
     P_out = []
     for j in range(N):
         I = I_local[j]
