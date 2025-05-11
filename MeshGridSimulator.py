@@ -59,31 +59,33 @@ if st.button("⏭ Step"):
 # -------------------- Solve Function --------------------
 # This calculates voltage sag, line currents, and inverter power output
 def solve(load_W, I_local):
-    # Calculate surplus current (current supplied - current demanded at V_NOM)
+    # Step 1: Calculate surplus (net current at each node)
     surplus = [I_local[j] - load_W[j] / V_NOM for j in range(N)]
 
-    # Calculate line currents flowing segment by segment (right to left)
+    # Step 2: Calculate line currents from right to left
     line_I = []
     cum = 0.0
     for seg in reversed(range(1, N)):
         cum += surplus[seg]
         line_I.insert(0, cum)
 
-    # Adjust leader output: subtract current already being received from other nodes
+    # Step 3: Adjust leader current based on support from others
     import_I = line_I[0] if line_I else 0.0
     eff_I0 = max(I_local[leader_idx] - import_I, 0.0)
-    I_local[leader_idx] = eff_I0  # reduce leader’s current accordingly
 
-    # Compute voltage at each inverter, starting from leader
+    # ⚠️ Update both local and session state
+    I_local[leader_idx] = eff_I0
+    st.session_state.I_local[leader_idx] = eff_I0
+
+    # Step 4: Calculate voltages across the mesh
     V_nodes = [V_NOM] * N
     drop_seg = []
-
     for j in range(1, N):
         drop = abs(line_I[j - 1]) * R_LINE
         drop_seg.append(drop)
         V_nodes[j] = max(V_nodes[j - 1] - drop, MIN_V)
 
-    # Apply voltage droop if power exceeds 2kW
+    # Step 5: Apply voltage droop if power > 2kW
     for j in range(N):
         I = I_local[j]
         V = V_nodes[j]
@@ -91,7 +93,7 @@ def solve(load_W, I_local):
         if power > CAP_W:
             V_nodes[j] = max(CAP_W / I, MIN_V)
 
-    # Final power output calculations
+    # Step 6: Final power output, capped at 2kW
     P_out = []
     for j in range(N):
         I = I_local[j]
@@ -101,7 +103,7 @@ def solve(load_W, I_local):
             I = CAP_W / V
             P = CAP_W
         P_out.append(P)
-        st.session_state.I_local[j] = I  # update in session state
+        st.session_state.I_local[j] = I  # keep session state in sync
 
     return V_nodes, P_out, line_I, drop_seg
 
